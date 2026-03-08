@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PBIP Lineage Explorer</title>
+  <link rel="stylesheet" href="/styles/main.css" />
+</head>
+<body>
+  <!-- Toolbar -->
+  <header id="toolbar">
+    <div class="toolbar-left">
+      <button id="btn-open-folder" title="Open PBIP folder">
+        <span class="icon">&#128194;</span> Open Folder
+      </button>
+      <span id="stats" class="toolbar-stats"></span>
+    </div>
+    <div class="toolbar-center">
+      <span class="app-title">PBIP Lineage Explorer</span>
+    </div>
+    <div class="toolbar-right">
+      <div class="btn-group">
+        <button id="btn-layout-force" class="layout-btn active" title="Force layout">Force</button>
+        <button id="btn-layout-tree" class="layout-btn" title="Tree layout">Tree</button>
+      </div>
+      <div class="btn-group">
+        <button id="btn-zoom-in" title="Zoom in">+</button>
+        <button id="btn-zoom-reset" title="Reset zoom">Reset</button>
+        <button id="btn-zoom-out" title="Zoom out">-</button>
+      </div>
+      <div class="btn-group">
+        <button id="btn-export-svg" title="Export as SVG">SVG</button>
+        <button id="btn-export-png" title="Export as PNG">PNG</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main content area -->
+  <div id="app">
+    <!-- Left sidebar: search & filters -->
+    <aside id="search-panel" class="sidebar sidebar-left">
+      <div class="sidebar-header">
+        <h3>Search &amp; Filter</h3>
+      </div>
+      <div class="sidebar-body">
+        <div class="search-group">
+          <input type="text" id="search-input" placeholder="Search nodes..." autocomplete="off" />
+        </div>
+        <div class="filter-group">
+          <label for="filter-type">Node Type</label>
+          <select id="filter-type">
+            <option value="">All types</option>
+            <option value="table">Table</option>
+            <option value="column">Column</option>
+            <option value="measure">Measure</option>
+            <option value="visual">Visual</option>
+            <option value="page">Page</option>
+            <option value="source">Source</option>
+          </select>
+        </div>
+        <div class="filter-group">
+          <label for="filter-table">Table</label>
+          <select id="filter-table">
+            <option value="">All tables</option>
+          </select>
+        </div>
+        <div class="filter-group toggle-group">
+          <label>
+            <input type="checkbox" id="filter-orphans" />
+            Show orphan nodes only
+          </label>
+        </div>
+        <div id="search-results" class="search-results"></div>
+      </div>
+    </aside>
+
+    <!-- Graph area -->
+    <main id="graph-container">
+    </main>
+
+    <!-- Right detail panel -->
+    <aside id="detail-panel" class="sidebar sidebar-right hidden">
+      <div class="sidebar-header">
+        <h3 id="detail-title">Details</h3>
+        <button id="btn-close-detail" class="btn-close" title="Close">&times;</button>
+      </div>
+      <div class="sidebar-body">
+        <div id="detail-content"></div>
+      </div>
+    </aside>
+  </div>
+
+  <!-- Welcome overlay -->
+  <div id="welcome-overlay" class="overlay">
+    <div class="overlay-card">
+      <h1>PBIP Lineage Explorer</h1>
+      <p>Trace dependencies from visuals to source columns in your Power BI PBIP projects.</p>
+      <ol>
+        <li>Click <strong>Open Folder</strong> to select your PBIP project root</li>
+        <li>The tool reads <code>.tmdl</code> and <code>.pbir</code> files directly from disk</li>
+        <li>Explore the interactive lineage graph - click nodes for details</li>
+        <li>Use search and filters to find specific objects</li>
+      </ol>
+      <div class="overlay-legend">
+        <span class="legend-item"><span class="dot dot-table"></span> Table</span>
+        <span class="legend-item"><span class="dot dot-column"></span> Column</span>
+        <span class="legend-item"><span class="dot dot-measure"></span> Measure</span>
+        <span class="legend-item"><span class="dot dot-visual"></span> Visual</span>
+        <span class="legend-item"><span class="dot dot-page"></span> Page</span>
+        <span class="legend-item"><span class="dot dot-source"></span> Source</span>
+      </div>
+      <button id="btn-get-started" class="btn-primary">Open Folder to Begin</button>
+      <p class="overlay-note">No data is uploaded. Everything runs locally in your browser using the File System Access API.</p>
+    </div>
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>

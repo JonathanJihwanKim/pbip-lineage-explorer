@@ -1,0 +1,18 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visual/1.0.0/schema.json",
+  "name": "visual2",
+  "visual": {
+    "visualType": "card",
+    "title": "Average Sales",
+    "prototypeQuery": {
+      "Version": 2,
+      "From": [
+        {"Name": "s", "Entity": "Sales", "Type": 0}
+      ],
+      "Select": [
+        {"Measure": {"Expression": {"SourceRef": {"Source": "s"}}, "Property": "Avg Sales"}, "Name": "Sales.Avg Sales"}
+      ]
+    }
+  },
+  "position": {"x": 620, "y": 0, "width": 300, "height": 200}
+}

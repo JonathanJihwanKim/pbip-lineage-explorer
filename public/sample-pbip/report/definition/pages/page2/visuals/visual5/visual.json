@@ -1,0 +1,20 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visual/1.0.0/schema.json",
+  "name": "visual5",
+  "visual": {
+    "visualType": "lineChart",
+    "title": "YoY Growth Trend",
+    "prototypeQuery": {
+      "Version": 2,
+      "From": [
+        {"Name": "d", "Entity": "DateTable", "Type": 0},
+        {"Name": "s", "Entity": "Sales", "Type": 0}
+      ],
+      "Select": [
+        {"Column": {"Expression": {"SourceRef": {"Source": "d"}}, "Property": "Year"}, "Name": "DateTable.Year"},
+        {"Measure": {"Expression": {"SourceRef": {"Source": "s"}}, "Property": "YoY Growth"}, "Name": "Sales.YoY Growth"}
+      ]
+    }
+  },
+  "position": {"x": 620, "y": 0, "width": 600, "height": 400}
+}

@@ -1,0 +1,20 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visual/1.0.0/schema.json",
+  "name": "visual4",
+  "visual": {
+    "visualType": "map",
+    "title": "Sales by Region",
+    "prototypeQuery": {
+      "Version": 2,
+      "From": [
+        {"Name": "c", "Entity": "Customers", "Type": 0},
+        {"Name": "s", "Entity": "Sales", "Type": 0}
+      ],
+      "Select": [
+        {"Column": {"Expression": {"SourceRef": {"Source": "c"}}, "Property": "Region"}, "Name": "Customers.Region"},
+        {"Measure": {"Expression": {"SourceRef": {"Source": "s"}}, "Property": "Total Sales"}, "Name": "Sales.Total Sales"}
+      ]
+    }
+  },
+  "position": {"x": 0, "y": 0, "width": 600, "height": 400}
+}

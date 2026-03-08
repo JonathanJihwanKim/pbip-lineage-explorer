@@ -1,0 +1,21 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visual/1.0.0/schema.json",
+  "name": "visual1",
+  "visual": {
+    "visualType": "clusteredBarChart",
+    "objects": {},
+    "title": "Sales by Category",
+    "prototypeQuery": {
+      "Version": 2,
+      "From": [
+        {"Name": "p", "Entity": "Products", "Type": 0},
+        {"Name": "s", "Entity": "Sales", "Type": 0}
+      ],
+      "Select": [
+        {"Column": {"Expression": {"SourceRef": {"Source": "p"}}, "Property": "Category"}, "Name": "Products.Category"},
+        {"Measure": {"Expression": {"SourceRef": {"Source": "s"}}, "Property": "Total Sales"}, "Name": "Sales.Total Sales"}
+      ]
+    }
+  },
+  "position": {"x": 0, "y": 0, "width": 600, "height": 400}
+}

@@ -1,0 +1,24 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visual/1.0.0/schema.json",
+  "name": "visual3",
+  "visual": {
+    "visualType": "tableEx",
+    "title": "Sales Detail",
+    "prototypeQuery": {
+      "Version": 2,
+      "From": [
+        {"Name": "s", "Entity": "Sales", "Type": 0},
+        {"Name": "p", "Entity": "Products", "Type": 0},
+        {"Name": "c", "Entity": "Customers", "Type": 0}
+      ],
+      "Select": [
+        {"Column": {"Expression": {"SourceRef": {"Source": "p"}}, "Property": "ProductName"}, "Name": "Products.ProductName"},
+        {"Column": {"Expression": {"SourceRef": {"Source": "c"}}, "Property": "CustomerName"}, "Name": "Customers.CustomerName"},
+        {"Column": {"Expression": {"SourceRef": {"Source": "s"}}, "Property": "Amount"}, "Name": "Sales.Amount"},
+        {"Column": {"Expression": {"SourceRef": {"Source": "s"}}, "Property": "Quantity"}, "Name": "Sales.Quantity"},
+        {"Measure": {"Expression": {"SourceRef": {"Source": "s"}}, "Property": "Total Sales"}, "Name": "Sales.Total Sales"}
+      ]
+    }
+  },
+  "position": {"x": 0, "y": 420, "width": 920, "height": 350}
+}
