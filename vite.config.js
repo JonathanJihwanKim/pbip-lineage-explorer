@@ -1,6 +1,6 @@
 import { defineConfig } from 'vite';
 export default defineConfig({
-  base: '/pbip-lineage-explorer/',
+  base: './',
   build: {
     outDir: 'dist',
     sourcemap: true
