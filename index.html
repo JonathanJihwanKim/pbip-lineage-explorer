@@ -10,8 +10,8 @@
   <!-- Toolbar -->
   <header id="toolbar">
     <div class="toolbar-left">
-      <button id="btn-open-folder" title="Open PBIP folder">
-        <span class="icon">&#128194;</span> Open Folder
+      <button id="btn-open-folder" title="Open .Report folder">
+        <span class="icon">&#128194;</span> Open Report
       </button>
       <span id="stats" class="toolbar-stats"></span>
     </div>
@@ -96,10 +96,10 @@
       <h1>PBIP Lineage Explorer</h1>
       <p>Trace dependencies from visuals to source columns in your Power BI PBIP projects.</p>
       <ol>
-        <li>Click <strong>Open Folder</strong> to select your PBIP project root</li>
-        <li>The tool reads <code>.tmdl</code> and <code>.pbir</code> files directly from disk</li>
+        <li>Click <strong>Open Report</strong> to select your <code>.Report</code> folder</li>
+        <li>The tool reads <code>definition.pbir</code> to find the linked semantic model</li>
+        <li>You'll be asked to also select the <strong>semantic model folder</strong></li>
         <li>Explore the interactive lineage graph - click nodes for details</li>
-        <li>Use search and filters to find specific objects</li>
       </ol>
       <div class="overlay-legend">
         <span class="legend-item"><span class="dot dot-table"></span> Table</span>
@@ -109,11 +109,32 @@
         <span class="legend-item"><span class="dot dot-page"></span> Page</span>
         <span class="legend-item"><span class="dot dot-source"></span> Source</span>
       </div>
-      <button id="btn-get-started" class="btn-primary">Open Folder to Begin</button>
+      <button id="btn-get-started" class="btn-primary">Open Report Folder to Begin</button>
       <p class="overlay-note">No data is uploaded. Everything runs locally in your browser using the File System Access API.</p>
     </div>
   </div>
 
+  <!-- Semantic model prompt overlay -->
+  <div id="semantic-model-prompt" class="overlay hidden">
+    <div class="overlay-card">
+      <h2>Select Semantic Model Folder</h2>
+      <p>The report references a semantic model at:</p>
+      <code id="semantic-model-path-hint"></code>
+      <p>Please select that folder to load the full data model and enable complete lineage tracing.</p>
+      <div class="overlay-actions">
+        <button id="btn-select-model" class="btn-primary">Select Semantic Model Folder</button>
+        <button id="btn-skip-model" class="btn-secondary">Skip (visuals only)</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "d3": "https://cdn.jsdelivr.net/npm/d3@7.9.0/+esm"
+    }
+  }
+  </script>
   <script type="module" src="/src/main.js"></script>
 </body>
 </html>

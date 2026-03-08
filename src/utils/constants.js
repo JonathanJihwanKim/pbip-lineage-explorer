@@ -31,7 +31,9 @@ export const EDGE_TYPES = {
   MEASURE_TO_COLUMN: 'measure_to_column',
   COLUMN_TO_TABLE: 'column_to_table',
   TABLE_RELATIONSHIP: 'table_relationship',
-  VISUAL_TO_PAGE: 'visual_to_page'
+  VISUAL_TO_PAGE: 'visual_to_page',
+  FIELD_PARAM_TO_FIELD: 'field_param_to_field',
+  TABLE_TO_SOURCE: 'table_to_source'
 };
 
 export const ENRICHMENT_TYPES = {

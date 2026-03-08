@@ -185,6 +185,20 @@ button .icon {
   color: var(--text-primary);
 }
 
+.btn-secondary {
+  background: transparent;
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  padding: 8px 20px;
+  font-size: 14px;
+  border-radius: 6px;
+}
+
+.btn-secondary:hover {
+  background: var(--bg-input);
+  color: var(--text-primary);
+}
+
 /* --- App layout --- */
 #app {
   display: flex;
@@ -569,10 +583,33 @@ button .icon {
 .dot-page { background: var(--color-page); }
 .dot-source { background: var(--color-source); }
 
+.overlay-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  margin-top: 16px;
+}
+
 .overlay-note {
   font-size: 12px;
   color: var(--text-muted);
   margin-top: 16px;
+}
+
+#semantic-model-prompt code {
+  display: block;
+  margin: 12px 0;
+  padding: 8px 12px;
+  background: var(--bg-input);
+  border-radius: 4px;
+  font-size: 14px;
+  word-break: break-all;
+  color: var(--accent);
+}
+
+#semantic-model-prompt h2 {
+  font-size: 20px;
+  margin-bottom: 12px;
 }
 
 /* --- Responsive --- */
@@ -600,4 +637,54 @@ button .icon {
     z-index: 50;
     height: 100%;
   }
+}
+
+/* --- Focus Mode --- */
+.btn-focus-back {
+  background: #e91e63;
+  border: 1px solid #e91e63;
+  color: #fff;
+  font-size: 13px;
+  padding: 6px 14px;
+  border-radius: 4px;
+  cursor: pointer;
+  margin-left: 8px;
+  animation: fadeIn 0.3s ease;
+}
+
+.btn-focus-back:hover {
+  background: #f44336;
+  border-color: #f44336;
+}
+
+/* --- Grouped Dependencies in Detail Panel --- */
+.dep-group {
+  margin-bottom: 10px;
+}
+
+.dep-group-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.dep-count {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.dep-source-detail {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-left: 16px;
+  margin-top: 2px;
+  word-break: break-all;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }

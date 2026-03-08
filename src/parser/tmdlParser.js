@@ -126,8 +126,12 @@ export function parseTableFile(content, fileName) {
       // Partition definition
       const partMatch = trimmed.match(/^partition\s+(.+)$/);
       if (partMatch) {
-        const partName = unquoteName(partMatch[1].replace(/\s*=\s*.*$/, '').trim());
-        result.partitions.push({ name: partName });
+        const partRaw = partMatch[1].trim();
+        const partEqMatch = partRaw.match(/^(.+?)\s*=\s*(.*)$/);
+        const partName = unquoteName((partEqMatch ? partEqMatch[1] : partRaw).trim());
+        const partType = partEqMatch ? partEqMatch[2].trim().toLowerCase() : '';
+        const partition = parsePartitionBlock(lines, i, partName, partType);
+        result.partitions.push(partition);
         i++;
         continue;
       }
@@ -243,6 +247,122 @@ export function extractDaxExpression(lines, startIndex) {
   }
 
   return parts.join('\n').trim();
+}
+
+/**
+ * Parse a partition block starting at the given line index.
+ * Extracts mode, source expression, and data source info.
+ * @param {string[]} lines
+ * @param {number} startIndex
+ * @param {string} name
+ * @param {string} type - 'm', 'entity', 'calculated', etc.
+ * @returns {{ name: string, type: string, mode: string, sourceExpression: string|null }}
+ */
+function parsePartitionBlock(lines, startIndex, name, type) {
+  const partition = { name, type: type || '', mode: '', sourceExpression: null };
+  const baseIndent = getIndentLevel(lines[startIndex]);
+  let i = startIndex + 1;
+
+  while (i < lines.length) {
+    const line = lines[i];
+    const trimmed = line.trim();
+    if (!trimmed) { i++; continue; }
+
+    const indent = getIndentLevel(line);
+    if (indent <= baseIndent) break;
+
+    // mode: import / directQuery
+    const modeMatch = trimmed.match(/^mode\s*[:=]\s*(.+)$/i);
+    if (modeMatch) {
+      partition.mode = modeMatch[1].trim().toLowerCase();
+      i++;
+      continue;
+    }
+
+    // source = <M expression>
+    const sourceMatch = trimmed.match(/^source\s*=\s*(.*)$/i);
+    if (sourceMatch) {
+      const firstPart = sourceMatch[1].trim();
+      const parts = firstPart ? [firstPart] : [];
+      const sourceIndent = getIndentLevel(line);
+      let j = i + 1;
+      while (j < lines.length) {
+        const sLine = lines[j];
+        const sTrimmed = sLine.trim();
+        if (!sTrimmed) { j++; continue; }
+        const sIndent = getIndentLevel(sLine);
+        if (sIndent <= sourceIndent) break;
+        parts.push(sTrimmed);
+        j++;
+      }
+      partition.sourceExpression = parts.join('\n').trim() || null;
+      i = j;
+      continue;
+    }
+
+    i++;
+  }
+
+  return partition;
+}
+
+/**
+ * Extract data source connection details from an M expression.
+ * Lightweight regex-based parser for common Power Query patterns.
+ * @param {string} mExpression - The M/Power Query expression text.
+ * @returns {{ server: string|null, database: string|null, schema: string|null, sourceTable: string|null, type: string|null }|null}
+ */
+export function extractMDataSource(mExpression) {
+  if (!mExpression) return null;
+
+  const result = { server: null, database: null, schema: null, sourceTable: null, type: null };
+
+  // Sql.Database("server", "database")
+  const sqlMatch = mExpression.match(/Sql\.Database\s*\(\s*"([^"]+)"\s*,\s*"([^"]+)"\s*\)/i);
+  if (sqlMatch) {
+    result.type = 'SQL';
+    result.server = sqlMatch[1];
+    result.database = sqlMatch[2];
+  }
+
+  // Fabric / Lakehouse detection
+  if (result.server && result.server.includes('.fabric.microsoft.com')) {
+    result.type = 'Fabric/Lakehouse';
+  }
+
+  // Schema and item: Source{[Schema="dbo",Item="tablename"]}
+  const schemaItemMatch = mExpression.match(/\{[^}]*Schema\s*=\s*"([^"]+)"[^}]*Item\s*=\s*"([^"]+)"[^}]*\}/i);
+  if (schemaItemMatch) {
+    result.schema = schemaItemMatch[1];
+    result.sourceTable = schemaItemMatch[2];
+  }
+
+  // Fallback: Source{[Name="tablename"]}
+  if (!result.sourceTable) {
+    const nameMatch = mExpression.match(/\{[^}]*Name\s*=\s*"([^"]+)"[^}]*\}/i);
+    if (nameMatch) {
+      result.sourceTable = nameMatch[1];
+    }
+  }
+
+  // Web.Contents("url")
+  if (!result.server) {
+    const webMatch = mExpression.match(/Web\.Contents\s*\(\s*"([^"]+)"/i);
+    if (webMatch) {
+      result.type = 'Web';
+      result.server = webMatch[1];
+    }
+  }
+
+  // Excel.Workbook, Csv.Document, File.Contents
+  if (!result.type) {
+    const fileMatch = mExpression.match(/(Excel\.Workbook|Csv\.Document|File\.Contents)\s*\(/i);
+    if (fileMatch) {
+      result.type = fileMatch[1].split('.')[0];
+    }
+  }
+
+  return (result.server || result.database || result.sourceTable) ? result : null;
 }
 
 /**

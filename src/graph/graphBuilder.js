@@ -5,6 +5,7 @@
  */
 
 import { NODE_TYPES, EDGE_TYPES } from '../utils/constants.js';
+import { extractMDataSource } from '../parser/tmdlParser.js';
 
 /**
  * Create a graph node.
@@ -80,7 +81,7 @@ function extractDaxReferences(expression, currentTable, allNodes) {
  * @param {Array} edges - Graph edges.
  * @returns {{ upstream: Map<string, string[]>, downstream: Map<string, string[]> }}
  */
-function buildAdjacency(edges) {
+export function buildAdjacency(edges) {
   const upstream = new Map();
   const downstream = new Map();
 
@@ -186,6 +187,50 @@ export function buildGraph(parsedModel, parsedReport, enrichments) {
         }
       }
     }
+
+    // --- Create source nodes from partition M expressions ---
+    const sourceNodeCache = new Map();
+    for (const table of parsedModel.tables) {
+      for (const partition of (table.partitions || [])) {
+        if (!partition.sourceExpression) continue;
+        const ds = extractMDataSource(partition.sourceExpression);
+        if (!ds) continue;
+
+        // Build deduplicated source key
+        const sourceKey = ds.database
+          ? `${(ds.server || '').toLowerCase()}/${ds.database}`
+          : (ds.server || '').toLowerCase();
+        if (!sourceKey) continue;
+
+        const sourceId = `source::${sourceKey}`;
+        if (!sourceNodeCache.has(sourceId)) {
+          const displayName = ds.database || ds.server || sourceKey;
+          nodes.set(sourceId, createNode(sourceId, displayName, NODE_TYPES.SOURCE, {
+            server: ds.server,
+            database: ds.database,
+            sourceType: ds.type
+          }));
+          sourceNodeCache.set(sourceId, true);
+        }
+
+        // Edge: table -> source
+        const tableId = `table::${table.name}`;
+        edges.push(createEdge(tableId, sourceId, EDGE_TYPES.TABLE_TO_SOURCE));
+
+        // Store source metadata on the table node
+        const tableNode = nodes.get(tableId);
+        if (tableNode) {
+          tableNode.metadata.dataSource = {
+            server: ds.server,
+            database: ds.database,
+            schema: ds.schema,
+            sourceTable: ds.sourceTable,
+            sourceType: ds.type,
+            mode: partition.mode
+          };
+        }
+      }
+    }
   }
 
   // --- Create page and visual nodes ---
@@ -220,7 +265,27 @@ export function buildGraph(parsedModel, parsedReport, enrichments) {
             } else if (field.table && field.column) {
               fieldId = `column::${field.table}.${field.column}`;
             }
-            if (fieldId && nodes.has(fieldId)) {
+            if (fieldId) {
+              // Create placeholder node if the field doesn't exist (no semantic model loaded)
+              if (!nodes.has(fieldId)) {
+                const placeholderName = field.measure || field.column || 'unknown';
+                const placeholderType = field.type === 'measure' ? NODE_TYPES.MEASURE : NODE_TYPES.COLUMN;
+                nodes.set(fieldId, createNode(fieldId, placeholderName, placeholderType, {
+                  table: field.table,
+                  placeholder: true
+                }));
+                // Also create placeholder table node if needed
+                const tableId = `table::${field.table}`;
+                if (field.table && !nodes.has(tableId)) {
+                  nodes.set(tableId, createNode(tableId, field.table, NODE_TYPES.TABLE, {
+                    table: field.table,
+                    placeholder: true
+                  }));
+                }
+                if (field.table && placeholderType === NODE_TYPES.COLUMN) {
+                  edges.push(createEdge(fieldId, tableId, EDGE_TYPES.COLUMN_TO_TABLE));
+                }
+              }
               edges.push(createEdge(visualId, fieldId, EDGE_TYPES.VISUAL_TO_FIELD));
             }
           }
@@ -233,16 +298,32 @@ export function buildGraph(parsedModel, parsedReport, enrichments) {
   if (enrichments) {
     if (enrichments.fieldParameters) {
       for (const fp of enrichments.fieldParameters) {
-        const nodeId = `column::${fp.table}.${fp.column}`;
-        const node = nodes.get(nodeId);
-        if (node) {
-          node.enrichment = { type: 'field_parameter', data: fp };
+        // Apply enrichment to the field parameter table node
+        const tableId = `table::${fp.tableName}`;
+        const tableNode = nodes.get(tableId);
+        if (tableNode) {
+          tableNode.enrichment = { type: 'field_parameter', data: fp };
+        }
+
+        // Create edges from field parameter table to each referenced field
+        const refPattern = /'([^']+)'\[([^\]]+)\]/;
+        for (const field of (fp.fields || [])) {
+          const refMatch = field.reference?.match(refPattern);
+          if (!refMatch) continue;
+          const refTable = refMatch[1];
+          const refField = refMatch[2];
+          const colId = `column::${refTable}.${refField}`;
+          const measureId = `measure::${refTable}.${refField}`;
+          const targetId = nodes.has(measureId) ? measureId : (nodes.has(colId) ? colId : null);
+          if (targetId) {
+            edges.push(createEdge(tableId, targetId, EDGE_TYPES.FIELD_PARAM_TO_FIELD));
+          }
         }
       }
     }
     if (enrichments.calculationGroups) {
       for (const cg of enrichments.calculationGroups) {
-        const nodeId = `table::${cg.table}`;
+        const nodeId = `table::${cg.tableName}`;
         const node = nodes.get(nodeId);
         if (node) {
           node.enrichment = { type: 'calculation_group', data: cg };
@@ -264,7 +345,7 @@ export function buildGraph(parsedModel, parsedReport, enrichments) {
  * @returns {{ tables: number, columns: number, measures: number, visuals: number, pages: number, edges: number, orphanedMeasures: number }}
  */
 export function computeStats(graph) {
-  const counts = { tables: 0, columns: 0, measures: 0, visuals: 0, pages: 0 };
+  const counts = { tables: 0, columns: 0, measures: 0, visuals: 0, pages: 0, sources: 0 };
 
   for (const node of graph.nodes.values()) {
     switch (node.type) {
@@ -273,6 +354,7 @@ export function computeStats(graph) {
       case NODE_TYPES.MEASURE: counts.measures++; break;
       case NODE_TYPES.VISUAL: counts.visuals++; break;
       case NODE_TYPES.PAGE: counts.pages++; break;
+      case NODE_TYPES.SOURCE: counts.sources++; break;
     }
   }
 
@@ -293,6 +375,7 @@ export function computeStats(graph) {
     measures: counts.measures,
     visuals: counts.visuals,
     pages: counts.pages,
+    sources: counts.sources,
     edges: graph.edges.length,
     orphanedMeasures
   };

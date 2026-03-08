@@ -4,7 +4,7 @@
  */
 
 // Parsers
-import { openPbipProject } from './parser/pbipReader.js';
+import { openReportFolder, openSemanticModelFolder } from './parser/pbipReader.js';
 import { parseTmdlModel } from './parser/tmdlParser.js';
 import { parsePbirReport } from './parser/pbirParser.js';
 import { parseDaxExpression } from './parser/daxParser.js';
@@ -13,7 +13,7 @@ import { detectEnrichments, applyEnrichments } from './parser/enrichment.js';
 // Graph
 import { buildGraph, computeStats } from './graph/graphBuilder.js';
 import { initRenderer, exportSvg, exportPng } from './graph/graphRenderer.js';
-import { analyzeImpact, findOrphans } from './graph/impactAnalysis.js';
+import { analyzeImpact, findOrphans, extractSubgraph } from './graph/impactAnalysis.js';
 
 // UI
 import { initSearchPanel, updateFilters, clearSearch } from './ui/searchPanel.js';
@@ -32,6 +32,9 @@ const state = {
   currentLayout: LAYOUT_TYPES.FORCE,
   selectedNode: null,
   orphans: [],
+  focusMode: false,
+  focusNodeId: null,
+  focusGraph: null,
 };
 
 /**
@@ -66,21 +69,83 @@ function init() {
 }
 
 /**
- * Handle Open Folder button click.
+ * Show the semantic model prompt overlay with a path hint.
+ * Returns a promise that resolves when the user clicks Select or Skip.
+ * @param {string|null} pathHint - The relative path from definition.pbir
+ * @returns {Promise<'select'|'skip'>}
+ */
+function showSemanticModelPrompt(pathHint) {
+  return new Promise((resolve) => {
+    const overlay = document.getElementById('semantic-model-prompt');
+    const hintEl = document.getElementById('semantic-model-path-hint');
+    const btnSelect = document.getElementById('btn-select-model');
+    const btnSkip = document.getElementById('btn-skip-model');
+
+    if (hintEl) {
+      hintEl.textContent = pathHint || '(path not found in definition.pbir)';
+    }
+    if (overlay) overlay.classList.remove('hidden');
+
+    function cleanup() {
+      if (btnSelect) btnSelect.removeEventListener('click', onSelect);
+      if (btnSkip) btnSkip.removeEventListener('click', onSkip);
+      if (overlay) overlay.classList.add('hidden');
+    }
+
+    function onSelect() {
+      cleanup();
+      resolve('select');
+    }
+
+    function onSkip() {
+      cleanup();
+      resolve('skip');
+    }
+
+    if (btnSelect) btnSelect.addEventListener('click', onSelect);
+    if (btnSkip) btnSkip.addEventListener('click', onSkip);
+  });
+}
+
+/**
+ * Handle Open Report Folder button click.
  */
 async function handleOpenFolder() {
   try {
-    showLoading('Opening project...');
+    showLoading('Select your .Report folder...');
 
-    // 1. Open directory and get files
-    const files = await openPbipProject();
+    // Step 1: Open report folder
+    const reportResult = await openReportFolder();
+
+    // Step 2: If definition.pbir found a semantic model path, prompt user
+    let modelStructure = null;
+    if (reportResult.semanticModelPath) {
+      hideLoading();
+      const choice = await showSemanticModelPrompt(reportResult.semanticModelPath);
+
+      if (choice === 'select') {
+        try {
+          showLoading('Select semantic model folder...');
+          const modelResult = await openSemanticModelFolder();
+          modelStructure = modelResult.modelStructure;
+        } catch (err) {
+          if (err.name === 'AbortError') {
+            // User cancelled - proceed without model
+          } else {
+            throw err;
+          }
+        }
+      }
+    }
 
     showLoading('Parsing model...');
 
-    // 2. Parse TMDL model
-    const model = parseTmdlModel(files.tmdlFiles, files.relationshipFiles);
+    // Step 3: Parse TMDL model (if semantic model was loaded)
+    const tmdlFiles = modelStructure?.tmdlFiles || [];
+    const relationshipFiles = modelStructure?.relationshipFiles || [];
+    const model = parseTmdlModel(tmdlFiles, relationshipFiles);
 
-    // 3. Parse DAX in each measure to get dependency info
+    // Step 4: Parse DAX in each measure to get dependency info
     for (const table of model.tables) {
       for (const measure of (table.measures || [])) {
         if (measure.expression) {
@@ -97,28 +162,31 @@ async function handleOpenFolder() {
 
     showLoading('Parsing report...');
 
-    // 4. Parse PBIR report
-    const report = parsePbirReport(files.visualFiles, files.pageFiles);
+    // Step 5: Parse PBIR report
+    const report = parsePbirReport(
+      reportResult.reportStructure.visualFiles,
+      reportResult.reportStructure.pageFiles
+    );
 
-    // 5. Detect enrichments
+    // Step 6: Detect enrichments
     const enrichments = detectEnrichments(model.tables);
 
     showLoading('Building graph...');
 
-    // 6. Build graph
+    // Step 7: Build graph
     let graph = buildGraph(model, report, enrichments);
 
-    // 7. Apply enrichments to graph nodes
+    // Step 8: Apply enrichments to graph nodes
     graph = applyEnrichments(graph, enrichments);
 
-    // 8. Find orphans
+    // Step 9: Find orphans
     const orphans = findOrphans(graph);
     state.orphans = orphans;
     state.graph = graph;
 
     showLoading('Rendering...');
 
-    // 9. Initialize renderer (pass the container, not the SVG itself)
+    // Step 10: Initialize renderer
     const graphContainer = document.getElementById('graph-container');
     if (state.renderer) {
       state.renderer.destroy();
@@ -128,10 +196,10 @@ async function handleOpenFolder() {
       onNodeClick: handleNodeClick,
     });
 
-    // 10. Update search panel filters
+    // Step 11: Update search panel filters
     updateFilters(graph);
 
-    // 11. Update toolbar stats
+    // Step 12: Update toolbar stats
     const rawStats = computeStats(graph);
     updateStats({
       nodeCount: graph.nodes.size,
@@ -141,12 +209,13 @@ async function handleOpenFolder() {
         measure: rawStats.measures,
         visual: rawStats.visuals,
         column: rawStats.columns,
-        page: rawStats.pages
+        page: rawStats.pages,
+        source: rawStats.sources
       },
       orphanCount: orphans.length
     });
 
-    // 12. Hide welcome overlay
+    // Step 13: Hide welcome overlay
     const overlay = document.getElementById('welcome-overlay');
     if (overlay) overlay.classList.add('hidden');
 
@@ -170,14 +239,14 @@ function handleNodeClick(node) {
 
   state.selectedNode = node;
 
-  // Analyze impact
+  // Analyze impact against the full graph
   const impact = analyzeImpact(node.id, state.graph);
 
   // Show detail panel
-  showNodeDetail(node, impact, state.graph);
+  showNodeDetail(node, impact, state.graph, { focusMode: state.focusMode });
 
-  // Highlight connected nodes
-  if (state.renderer) {
+  // In focus mode, everything is already visible; otherwise highlight
+  if (!state.focusMode && state.renderer) {
     const allConnected = [node.id, ...impact.upstream, ...impact.downstream];
     state.renderer.highlightNodes(allConnected);
   }
@@ -246,18 +315,87 @@ function handleLayoutChange(layout) {
  */
 function handleDetailClose() {
   state.selectedNode = null;
-  if (state.renderer) {
+  if (state.focusMode) {
+    exitFocusMode();
+  } else if (state.renderer) {
     state.renderer.resetHighlight();
   }
 }
 
 /**
- * Handle Analyze Impact button in detail panel.
+ * Handle Focus Lineage button in detail panel - enter focus mode.
  */
 function handleAnalyzeImpact(nodeId, impact) {
-  if (!state.renderer || !impact) return;
-  const allConnected = [nodeId, ...impact.upstream, ...impact.downstream];
-  state.renderer.highlightNodes(allConnected);
+  if (!state.renderer || !state.graph) return;
+
+  // Extract subgraph with only upstream + downstream nodes
+  const subgraph = extractSubgraph(nodeId, state.graph);
+  state.focusMode = true;
+  state.focusNodeId = nodeId;
+  state.focusGraph = subgraph;
+
+  // Switch renderer to subgraph with tree layout
+  state.renderer.update(subgraph);
+  state.renderer.setLayout(LAYOUT_TYPES.TREE);
+
+  // Zoom to fit after layout settles
+  setTimeout(() => {
+    state.renderer.zoomToFit();
+  }, 150);
+
+  // Show back button
+  showFocusModeUI();
+
+  // Refresh detail panel in focus mode
+  const node = state.graph.nodes.get(nodeId);
+  if (node) {
+    const fullImpact = impact || analyzeImpact(nodeId, state.graph);
+    showNodeDetail(node, fullImpact, state.graph, { focusMode: true });
+  }
+}
+
+/**
+ * Exit focus mode and restore the full graph.
+ */
+function exitFocusMode() {
+  if (!state.focusMode) return;
+
+  state.focusMode = false;
+  state.focusNodeId = null;
+  state.focusGraph = null;
+
+  // Restore full graph and original layout
+  state.renderer.update(state.graph);
+  state.renderer.setLayout(state.currentLayout);
+  state.renderer.resetHighlight();
+
+  hideFocusModeUI();
+  hideDetailPanel();
+}
+
+/**
+ * Show the focus mode back button in the toolbar.
+ */
+function showFocusModeUI() {
+  let backBtn = document.getElementById('btn-exit-focus');
+  if (!backBtn) {
+    backBtn = document.createElement('button');
+    backBtn.id = 'btn-exit-focus';
+    backBtn.className = 'btn-focus-back';
+    backBtn.textContent = '\u2190 Back to Full Graph';
+    backBtn.addEventListener('click', exitFocusMode);
+    const toolbar = document.querySelector('.toolbar-left');
+    if (toolbar) toolbar.appendChild(backBtn);
+  }
+  backBtn.style.display = 'inline-block';
+}
+
+/**
+ * Hide the focus mode back button.
+ */
+function hideFocusModeUI() {
+  const backBtn = document.getElementById('btn-exit-focus');
+  if (backBtn) backBtn.style.display = 'none';
 }
 
 /**

@@ -50,7 +50,7 @@ export function initRenderer(containerId, graph, options = {}) {
     .attr('orient', 'auto')
     .append('path')
     .attr('d', 'M0,-5L10,0L0,5')
-    .attr('fill', '#999');
+    .attr('fill', '#4a4a6a');
 
   // Glow filters for highlighting
   const glowBlue = defs.append('filter').attr('id', 'glow-upstream');
@@ -128,7 +128,7 @@ export function initRenderer(containerId, graph, options = {}) {
     const links = edgeGroup.selectAll('line')
       .data(edgesData, d => `${d.source}-${d.target}-${d.type}`)
       .join('line')
-      .attr('stroke', '#999')
+      .attr('stroke', '#4a4a6a')
       .attr('stroke-opacity', 0.6)
       .attr('stroke-width', 1.5)
       .attr('marker-end', 'url(#arrowhead)');
@@ -164,7 +164,7 @@ export function initRenderer(containerId, graph, options = {}) {
       .attr('font-size', '10px')
       .attr('text-anchor', 'middle')
       .attr('dy', d => getNodeRadius(d) + 12)
-      .attr('fill', '#333')
+      .attr('fill', '#e0e0e0')
       .attr('pointer-events', 'none');
 
     // Event handlers
@@ -324,7 +324,7 @@ export function initRenderer(containerId, graph, options = {}) {
       .attr('x', 18)
       .attr('y', 4)
       .attr('font-size', '11px')
-      .attr('fill', '#333')
+      .attr('fill', '#a0a0b0')
       .text(d => d[0].charAt(0).toUpperCase() + d[0].slice(1));
   }
 
@@ -335,7 +335,7 @@ export function initRenderer(containerId, graph, options = {}) {
   // Return the renderer API
   const renderer = {
     update(newGraph) {
-      Object.assign(graph, newGraph);
+      graph = newGraph;
       render();
     },
 
@@ -368,6 +368,26 @@ export function initRenderer(containerId, graph, options = {}) {
 
       labelGroup.selectAll('text')
         .attr('opacity', 1);
+    },
+
+    zoomToFit(padding = 40) {
+      const bbox = zoomGroup.node().getBBox();
+      if (bbox.width === 0 || bbox.height === 0) return;
+
+      const fullWidth = width;
+      const fullHeight = height;
+      const scale = Math.min(
+        (fullWidth - padding * 2) / bbox.width,
+        (fullHeight - padding * 2) / bbox.height,
+        2 // max scale
+      );
+      const tx = fullWidth / 2 - (bbox.x + bbox.width / 2) * scale;
+      const ty = fullHeight / 2 - (bbox.y + bbox.height / 2) * scale;
+
+      svg.transition().duration(750).call(
+        zoom.transform,
+        d3.zoomIdentity.translate(tx, ty).scale(scale)
+      );
     },
 
     setLayout(layoutType) {

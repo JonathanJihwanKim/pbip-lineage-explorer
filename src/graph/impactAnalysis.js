@@ -4,6 +4,8 @@
  * a selected object and what it depends on.
  */
 
+import { buildAdjacency } from './graphBuilder.js';
+
 /**
  * BFS traversal to collect all reachable nodes in a given direction.
  * @param {string} startId - Starting node ID.
@@ -97,6 +99,81 @@ export function findOrphans(graph) {
   }
 
   return orphans;
+}
+
+/**
+ * Extract a subgraph containing only the upstream and downstream nodes
+ * of a given node, suitable for rendering in focus mode.
+ * @param {string} nodeId - The focal node ID.
+ * @param {{ nodes: Map, edges: Array, adjacency: object }} graph - The full graph.
+ * @returns {{ nodes: Map, edges: Array, adjacency: object }}
+ */
+export function extractSubgraph(nodeId, graph) {
+  const upstream = getUpstream(nodeId, graph.adjacency);
+  const downstream = getDownstream(nodeId, graph.adjacency);
+
+  const subgraphIds = new Set([nodeId, ...upstream, ...downstream]);
+
+  // Build nodes map
+  const nodes = new Map();
+  for (const id of subgraphIds) {
+    const node = graph.nodes.get(id);
+    if (node) nodes.set(id, node);
+  }
+
+  // Filter edges to only those within the subgraph
+  const edges = graph.edges.filter(e => {
+    const srcId = typeof e.source === 'string' ? e.source : e.source.id;
+    const tgtId = typeof e.target === 'string' ? e.target : e.target.id;
+    return subgraphIds.has(srcId) && subgraphIds.has(tgtId);
+  });
+
+  const adjacency = buildAdjacency(edges);
+
+  return { nodes, edges, adjacency };
+}
+
+/**
+ * Compute depth map for upstream and downstream nodes via BFS from a focal node.
+ * @param {string} nodeId - The focal node ID.
+ * @param {{ upstream: Map, downstream: Map }} adjacency - Full graph adjacency.
+ * @returns {Map<string, { direction: string, depth: number }>}
+ */
+export function computeDepthMap(nodeId, adjacency) {
+  const depthMap = new Map();
+  depthMap.set(nodeId, { direction: 'self', depth: 0 });
+
+  // BFS upstream
+  const upQueue = [{ id: nodeId, depth: 0 }];
+  const upVisited = new Set([nodeId]);
+  while (upQueue.length > 0) {
+    const { id, depth } = upQueue.shift();
+    const neighbors = adjacency.upstream.get(id) || [];
+    for (const neighbor of neighbors) {
+      if (!upVisited.has(neighbor)) {
+        upVisited.add(neighbor);
+        depthMap.set(neighbor, { direction: 'upstream', depth: depth + 1 });
+        upQueue.push({ id: neighbor, depth: depth + 1 });
+      }
+    }
+  }
+
+  // BFS downstream
+  const downQueue = [{ id: nodeId, depth: 0 }];
+  const downVisited = new Set([nodeId]);
+  while (downQueue.length > 0) {
+    const { id, depth } = downQueue.shift();
+    const neighbors = adjacency.downstream.get(id) || [];
+    for (const neighbor of neighbors) {
+      if (!downVisited.has(neighbor)) {
+        downVisited.add(neighbor);
+        depthMap.set(neighbor, { direction: 'downstream', depth: depth + 1 });
+        downQueue.push({ id: neighbor, depth: depth + 1 });
+      }
+    }
+  }
+
+  return depthMap;
 }
 
 /**
