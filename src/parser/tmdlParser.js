@@ -145,6 +145,34 @@ export function parseTableFile(content, fileName) {
         i++;
         continue;
       }
+
+      // calculationGroup block
+      if (trimmed === 'calculationGroup') {
+        result.calculationGroup = true;
+        result.calculationItems = [];
+        const cgIndent = indent;
+        let j = i + 1;
+        while (j < lines.length) {
+          const cgLine = lines[j];
+          const cgTrimmed = cgLine.trim();
+          if (!cgTrimmed) { j++; continue; }
+          const cgLineIndent = getIndentLevel(cgLine);
+          if (cgLineIndent <= cgIndent) break;
+
+          const ciMatch = cgTrimmed.match(/^calculationItem\s+(.+?)\s*=\s*(.*)$/);
+          if (ciMatch) {
+            const ciName = unquoteName(ciMatch[1].trim());
+            const ciExpr = extractDaxExpression(lines, j);
+            result.calculationItems.push({
+              name: ciName,
+              expression: ciExpr || ciMatch[2].trim(),
+            });
+          }
+          j++;
+        }
+        i = j;
+        continue;
+      }
     }
 
     i++;

@@ -946,6 +946,79 @@ button .icon { margin-right: 4px; }
   to { transform: translateY(0); opacity: 1; }
 }
 
+/* --- Search Highlighting --- */
+mark {
+  background: rgba(66, 133, 244, 0.3);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+/* --- Visual Type Badge Colors --- */
+.visual-type-badge[data-category="chart"] {
+  background: rgba(66, 133, 244, 0.2);
+  color: #90caf9;
+}
+.visual-type-badge[data-category="table"] {
+  background: rgba(156, 39, 176, 0.2);
+  color: #ce93d8;
+}
+.visual-type-badge[data-category="card"] {
+  background: rgba(76, 175, 80, 0.2);
+  color: #a5d6a7;
+}
+.visual-type-badge[data-category="filter"] {
+  background: rgba(255, 152, 0, 0.2);
+  color: #ffcc80;
+}
+.visual-type-badge[data-category="other"] {
+  background: rgba(96, 125, 139, 0.2);
+  color: #b0bec5;
+}
+
+/* --- Visual Field Count Badge --- */
+.visual-field-count {
+  font-size: 10px;
+  color: var(--text-muted);
+  opacity: 0.7;
+  margin-left: auto;
+  padding: 1px 5px;
+  border-radius: 8px;
+  background: rgba(156, 39, 176, 0.15);
+}
+
+/* --- Empty Page Indicator --- */
+.empty-page {
+  font-style: italic;
+  opacity: 0.5;
+}
+
+/* --- Back Navigation Button --- */
+.lineage-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.lineage-title-row .lineage-title {
+  margin: 0;
+}
+.btn-back {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  border-radius: 4px;
+  padding: 4px 10px;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  transition: background 0.15s, color 0.15s;
+  flex-shrink: 0;
+}
+.btn-back:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
 /* --- Responsive --- */
 @media (max-width: 900px) {
   .sidebar-left { width: 220px; }

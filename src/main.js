@@ -29,6 +29,8 @@ const state = {
   semanticModelPath: null,
   sourceMapVisible: false,
   measureSelectCount: 0,
+  navigationHistory: [], // stack of { type: 'measure'|'visual', id: string }
+  currentSelection: null, // { type: 'measure'|'visual', id: string }
 };
 
 // --- Initialization ---
@@ -41,6 +43,9 @@ function init() {
 
   const btnLoadModel = document.getElementById('btn-load-model');
   if (btnLoadModel) btnLoadModel.addEventListener('click', handleLoadSemanticModel);
+
+  const btnBack = document.getElementById('btn-back');
+  if (btnBack) btnBack.addEventListener('click', navigateBack);
 
   // Source Map toggle
   const btnSourceMap = document.getElementById('btn-source-map');
@@ -237,7 +242,15 @@ async function loadProjectResult(projectResult) {
       visual: rawStats.visuals, column: rawStats.columns,
       page: rawStats.pages, source: rawStats.sources,
     },
+    orphanedMeasures: rawStats.orphanedMeasures || 0,
+    fieldParameters: enrichments.fieldParameters?.length || 0,
+    calculationGroups: enrichments.calculationGroups?.length || 0,
   });
+
+  // Reset navigation history on new project load
+  state.navigationHistory = [];
+  state.currentSelection = null;
+  updateBackButton();
 
   populateMeasures(graph);
   populateVisuals(graph);
@@ -337,6 +350,9 @@ async function handleLoadSemanticModel() {
         visual: rawStats.visuals, column: rawStats.columns,
         page: rawStats.pages, source: rawStats.sources,
       },
+      orphanedMeasures: rawStats.orphanedMeasures || 0,
+      fieldParameters: enrichments.fieldParameters?.length || 0,
+      calculationGroups: enrichments.calculationGroups?.length || 0,
     });
 
     populateMeasures(graph);
@@ -358,7 +374,7 @@ async function handleLoadSemanticModel() {
 
 // --- Measure Selection ---
 
-function handleMeasureSelect(measureId) {
+function handleMeasureSelect(measureId, { skipHistory = false } = {}) {
   if (!state.graph) return;
 
   // Exit source map view if active
@@ -376,6 +392,13 @@ function handleMeasureSelect(measureId) {
     showLineageMessage(`Measure not found in graph: ${measureId}`);
     return;
   }
+
+  // Push current selection to history before navigating
+  if (!skipHistory && state.currentSelection) {
+    state.navigationHistory.push(state.currentSelection);
+  }
+  state.currentSelection = { type: 'measure', id: measureId };
+  updateBackButton();
 
   try {
     const lineage = traceMeasureLineage(measureId, state.graph);
@@ -401,7 +424,7 @@ function handleMeasureSelect(measureId) {
 
 // --- Visual Selection ---
 
-function handleVisualSelect(visualId) {
+function handleVisualSelect(visualId, { skipHistory = false } = {}) {
   if (!state.graph) return;
 
   // Exit source map view if active
@@ -419,6 +442,13 @@ function handleVisualSelect(visualId) {
     showLineageMessage(`Visual not found in graph: ${visualId}`);
     return;
   }
+
+  // Push current selection to history before navigating
+  if (!skipHistory && state.currentSelection) {
+    state.navigationHistory.push(state.currentSelection);
+  }
+  state.currentSelection = { type: 'visual', id: visualId };
+  updateBackButton();
 
   try {
     const lineage = traceVisualLineage(visualId, state.graph);
@@ -459,6 +489,35 @@ function handleKeyDown(event) {
   // Escape to close source map view
   if (event.key === 'Escape' && state.sourceMapVisible) {
     toggleSourceMap();
+  }
+
+  // Alt+Left to go back in navigation history
+  if (event.key === 'ArrowLeft' && event.altKey) {
+    event.preventDefault();
+    navigateBack();
+  }
+}
+
+// --- Back Navigation ---
+
+function navigateBack() {
+  if (state.navigationHistory.length === 0) return;
+  const prev = state.navigationHistory.pop();
+  if (prev.type === 'measure') {
+    handleMeasureSelect(prev.id, { skipHistory: true });
+  } else if (prev.type === 'visual') {
+    handleVisualSelect(prev.id, { skipHistory: true });
+  }
+  updateBackButton();
+}
+
+function updateBackButton() {
+  const btn = document.getElementById('btn-back');
+  if (!btn) return;
+  if (state.navigationHistory.length > 0) {
+    btn.classList.remove('hidden');
+  } else {
+    btn.classList.add('hidden');
   }
 }
 

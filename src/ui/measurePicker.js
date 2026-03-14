@@ -29,6 +29,7 @@ export function initMeasurePicker(callbacks = {}) {
 let _callbacks = {};
 let _measures = []; // { id, name, table, expression, isOrphan }
 let _graph = null;
+let _searchQuery = '';
 
 /**
  * Populate the measure list from graph data.
@@ -73,6 +74,8 @@ function applyFilters() {
   const orphanFilter = document.getElementById('orphan-filter');
   const q = (searchInput?.value || '').toLowerCase().trim();
   const orphanOnly = orphanFilter?.checked || false;
+
+  _searchQuery = q;
 
   let filtered = _measures;
 
@@ -126,7 +129,8 @@ function renderList(measures) {
     html += `<div class="measure-group-items">`;
     for (const m of items) {
       const orphanBadge = m.isOrphan ? ' <span style="font-size:9px;color:var(--text-muted);opacity:0.6" title="Not used by any visual">orphan</span>' : '';
-      html += `<div class="measure-item" data-id="${escapeHtml(m.id)}">${escapeHtml(m.name)}${orphanBadge}</div>`;
+      const tooltip = `${m.table}[${m.name}]${m.isOrphan ? ' (orphan)' : ''}\n${m.expression.substring(0, 120)}`;
+      html += `<div class="measure-item" data-id="${escapeHtml(m.id)}" title="${escapeHtml(tooltip)}">${highlightMatch(m.name, _searchQuery)}${orphanBadge}</div>`;
     }
     html += `</div></details>`;
   }
@@ -157,6 +161,17 @@ export function selectMeasure(measureId) {
     el.classList.add('active');
     el.scrollIntoView({ block: 'nearest' });
   }
+}
+
+/**
+ * Highlight matching text in a search result.
+ */
+function highlightMatch(text, query) {
+  if (!query) return escapeHtml(text);
+  const escaped = escapeHtml(text);
+  const qEscaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const regex = new RegExp(`(${qEscaped})`, 'gi');
+  return escaped.replace(regex, '<mark>$1</mark>');
 }
 
 function escapeHtml(str) {

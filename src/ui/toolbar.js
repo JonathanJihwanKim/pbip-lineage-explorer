@@ -22,6 +22,9 @@ export function updateStats(stats) {
   if (t.table) parts.push(`${t.table} tables`);
   if (t.measure) parts.push(`${t.measure} measures`);
   if (t.visual) parts.push(`${t.visual} visuals`);
+  if (stats.orphanedMeasures) parts.push(`${stats.orphanedMeasures} orphans`);
+  if (stats.fieldParameters) parts.push(`${stats.fieldParameters} FP`);
+  if (stats.calculationGroups) parts.push(`${stats.calculationGroups} CG`);
 
   el.textContent = parts.length > 0 ? parts.join(' | ') : `${stats.nodeCount || 0} nodes`;
 }
