@@ -384,13 +384,13 @@ export function buildGraph(parsedModel, parsedReport, enrichments) {
         colNode.metadata.sourceColumn = sourceCol;
         colNode.metadata.originalSourceColumn = originalCol;
         colNode.metadata.wasRenamed = originalCol !== sourceCol;
-        // Store the full BigQuery path if available
+        // Store the full source path if available
         if (ds.sourceTable) {
           const fullTable = ds.schema
             ? `${ds.schema}.${ds.sourceTable}`
             : ds.sourceTable;
-          colNode.metadata.bigQueryColumn = `${fullTable}.${originalCol}`;
-          colNode.metadata.bigQueryTable = fullTable;
+          colNode.metadata.sourceTableFull = `${fullTable}.${originalCol}`;
+          colNode.metadata.sourceTablePath = fullTable;
         }
       }
     }

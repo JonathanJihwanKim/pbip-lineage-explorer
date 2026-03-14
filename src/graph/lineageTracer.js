@@ -264,8 +264,8 @@ function buildMeasureChain(measureNodeId, graph, visited) {
         sourceColumn: upNode.metadata?.sourceColumn || '',
         originalSourceColumn: upNode.metadata?.originalSourceColumn || '',
         wasRenamed: upNode.metadata?.wasRenamed || false,
-        bigQueryColumn: upNode.metadata?.bigQueryColumn || '',
-        bigQueryTable: upNode.metadata?.bigQueryTable || '',
+        sourceTableFull: upNode.metadata?.sourceTableFull || '',
+        sourceTablePath: upNode.metadata?.sourceTablePath || '',
       });
     }
   }
@@ -275,7 +275,7 @@ function buildMeasureChain(measureNodeId, graph, visited) {
 
 /**
  * Section 3: Build the source lineage table — one row per leaf column.
- * Traces each column to its BigQuery source.
+ * Traces each column to its data source.
  */
 function buildSourceTable(measureChain, graph) {
   const rows = [];
@@ -294,8 +294,8 @@ function buildSourceTable(measureChain, graph) {
 
       // Find PQ expression for this table
       let pqExpression = '';
-      let bqTable = col.bigQueryTable || '';
-      let bqColumn = col.bigQueryColumn || col.sourceColumn || col.name;
+      let srcTable = col.sourceTablePath || '';
+      let srcColumn = col.sourceTableFull || col.sourceColumn || col.name;
 
       if (tableNode) {
         // Walk upstream from table to find expression/source
@@ -305,11 +305,11 @@ function buildSourceTable(measureChain, graph) {
           if (upNode && upNode.type === 'expression') {
             pqExpression = upNode.name;
             if (upNode.metadata?.dataSource?.sourceTable) {
-              bqTable = bqTable || `${upNode.metadata.dataSource.database || ''}.${upNode.metadata.dataSource.sourceTable}`;
+              srcTable = srcTable || `${upNode.metadata.dataSource.database || ''}.${upNode.metadata.dataSource.sourceTable}`;
             }
           } else if (upNode && upNode.type === 'source') {
-            if (!bqTable && upNode.metadata?.database) {
-              bqTable = `${upNode.metadata.database}.*`;
+            if (!srcTable && upNode.metadata?.database) {
+              srcTable = `${upNode.metadata.database}.*`;
             }
           }
         }
@@ -322,8 +322,8 @@ function buildSourceTable(measureChain, graph) {
         sourceColumn: col.sourceColumn || col.name,
         originalSourceColumn: col.originalSourceColumn || '',
         pqExpression,
-        bigQueryTable: bqTable,
-        bigQueryColumn: bqColumn,
+        sourceTable: srcTable,
+        sourceColumnFull: srcColumn,
         renamed: col.wasRenamed,
         renameChain: col.wasRenamed
           ? { sourceName: col.originalSourceColumn || '', pqName: col.sourceColumn || '', pbiName: col.name }
@@ -369,7 +369,7 @@ function buildSummaryTrees(measureNode, visuals, measureChain, sourceTable, grap
       const source = colSourceMap.get(key);
       let colLine = `${prefix}    ${col.table}[${col.name}]`;
       if (source?.pqExpression) colLine += ` -> PQ: ${source.pqExpression}`;
-      if (source?.bigQueryTable) colLine += ` -> BQ: ${source.bigQueryTable}.${source.bigQueryColumn}`;
+      if (source?.sourceTable) colLine += ` -> Source: ${source.sourceTable}.${source.sourceColumnFull}`;
       if (source?.renamed) colLine += ' (renamed)';
       lines.push(colLine);
     }

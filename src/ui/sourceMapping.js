@@ -41,7 +41,7 @@ export function populateSourceMapping(graph) {
 
     // Determine source info
     const sourceColumn = col.metadata?.originalSourceColumn || col.metadata?.sourceColumn || col.name;
-    const sourceTable = col.metadata?.bigQueryTable || ds?.sourceTable || '';
+    const sourceTable = col.metadata?.sourceTablePath || ds?.sourceTable || '';
     const sourceType = ds?.sourceType || '';
     const wasRenamed = col.metadata?.wasRenamed || false;
 

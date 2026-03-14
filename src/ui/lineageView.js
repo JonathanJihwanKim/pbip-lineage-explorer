@@ -279,7 +279,7 @@ function renderChainNode(chain, depth) {
       html += `</div>`;
       // Source column info for data engineers
       if (col.originalSourceColumn && col.originalSourceColumn !== col.name) {
-        html += `<div class="chain-source-info">Source: ${esc(col.bigQueryTable ? `${col.bigQueryTable}.${col.originalSourceColumn}` : col.originalSourceColumn)}</div>`;
+        html += `<div class="chain-source-info">Source: ${esc(col.sourceTablePath ? `${col.sourceTablePath}.${col.originalSourceColumn}` : col.originalSourceColumn)}</div>`;
       }
     }
     html += `</div>`;
@@ -307,7 +307,7 @@ function renderSourceTableSection(sourceTable) {
   }
 
   html += '<div class="trace-table-wrapper"><table class="trace-table">';
-  html += '<thead><tr><th>DAX Ref</th><th>PBI Table</th><th>PBI Column</th><th>Source Column (PQ)</th><th>Original Source Column</th><th>Rename Chain</th><th>PQ Expression</th><th>BigQuery Table</th><th>BQ Column</th></tr></thead>';
+  html += '<thead><tr><th>DAX Ref</th><th>PBI Table</th><th>PBI Column</th><th>Source Column (PQ)</th><th>Original Source Column</th><th>Rename Chain</th><th>PQ Expression</th><th>Source Table</th><th>Source Column (Full)</th></tr></thead>';
   html += '<tbody>';
   for (const row of sourceTable) {
     const rowClass = row.renamed ? ' class="renamed-row"' : '';
@@ -323,8 +323,8 @@ function renderSourceTableSection(sourceTable) {
       html += `<td></td>`;
     }
     html += `<td>${esc(row.pqExpression)}</td>`;
-    html += `<td>${esc(row.bigQueryTable)}</td>`;
-    html += `<td>${esc(row.bigQueryColumn)}</td>`;
+    html += `<td>${esc(row.sourceTable)}</td>`;
+    html += `<td>${esc(row.sourceColumnFull)}</td>`;
     html += `</tr>`;
   }
   html += '</tbody></table></div>';
@@ -450,11 +450,11 @@ function renderSummaryChainNode(chain, depth, colSourceMap) {
       html += `</div>`;
     }
 
-    if (source?.bigQueryTable) {
+    if (source?.sourceTable) {
       html += `<div class="summary-node layer-source" style="margin-left:${colIndent + 40}px">`;
       html += `<span class="layer-label">L6</span>`;
       html += `<span class="summary-dot" style="background:#607d8b"></span>`;
-      html += `<span class="summary-node-name">${esc(source.bigQueryTable)}.${esc(source.bigQueryColumn)}</span>`;
+      html += `<span class="summary-node-name">${esc(source.sourceTable)}.${esc(source.sourceColumnFull)}</span>`;
       html += `</div>`;
     }
   }

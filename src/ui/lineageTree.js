@@ -1,7 +1,7 @@
 /**
  * Lineage Tree - D3.js tree/flow diagram for visualizing a traced lineage path.
  * Uses d3.tree() layout (deterministic, left-to-right) to show the 6-layer
- * lineage from Visuals down to BigQuery sources.
+ * lineage from Visuals down to data sources.
  */
 
 import * as d3 from 'd3';
@@ -162,27 +162,27 @@ function addChainChildren(node, chain, sourceMap, graph, visited) {
         children: [],
       };
 
-      // Add BigQuery source node if available
-      if (source.bigQueryTable) {
+      // Add source node if available
+      if (source.sourceTablePath) {
         exprNode.children.push({
-          name: source.bigQueryTable,
+          name: source.sourceTablePath,
           layer: 6,
           layerLabel: LAYER_LABELS[6],
           type: 'source',
-          detail: source.bigQueryColumn || '',
+          detail: source.sourceTableFull || '',
           children: [],
         });
       }
 
       colNode.children.push(exprNode);
-    } else if (source?.bigQueryTable) {
+    } else if (source?.sourceTablePath) {
       // Direct source without PQ expression
       colNode.children.push({
-        name: source.bigQueryTable,
+        name: source.sourceTablePath,
         layer: 6,
         layerLabel: LAYER_LABELS[6],
         type: 'source',
-        detail: source.bigQueryColumn || '',
+        detail: source.sourceTableFull || '',
         children: [],
       });
     }
