@@ -37,6 +37,21 @@ export function detectFieldParameter(table) {
     }
   }
 
+  // Also search partition source expressions for NAMEOF (TMDL calculated tables)
+  const partitions = table.partitions || [];
+  for (const partition of partitions) {
+    const src = partition.sourceExpression || '';
+    let m;
+    nameofPattern.lastIndex = 0;
+    while ((m = nameofPattern.exec(src)) !== null) {
+      if (m[1] && m[2]) {
+        nameofFields.push({ name: m[2], reference: `'${m[1]}'[${m[2]}]` });
+      } else if (m[3]) {
+        nameofFields.push({ name: m[3], reference: `[${m[3]}]` });
+      }
+    }
+  }
+
   if (nameofFields.length === 0) return result;
 
   result.isFieldParam = true;
