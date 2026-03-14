@@ -125,8 +125,15 @@ export function parseVisualConfig(config, pageName) {
       title = titleArr[0].properties.text.expr.Literal.Value.replace(/^'|'$/g, '');
     }
   }
+  // PBIR format: visualContainerObjects.title
+  if (!title && visual.visualContainerObjects?.title) {
+    const titleArr = visual.visualContainerObjects.title;
+    if (Array.isArray(titleArr) && titleArr[0]?.properties?.text?.expr?.Literal?.Value) {
+      title = titleArr[0].properties.text.expr.Literal.Value.replace(/^'|'$/g, '');
+    }
+  }
 
-  const fields = extractFieldReferences(visual);
+  const fields = extractFieldReferences(visual, config);
 
   return {
     id,
@@ -144,7 +151,7 @@ export function parseVisualConfig(config, pageName) {
  * @param {object} visualConfig - The visual configuration object.
  * @returns {Array<{ type: string, table: string, column: string|null, measure: string|null, role: string }>}
  */
-export function extractFieldReferences(visualConfig) {
+export function extractFieldReferences(visualConfig, fullConfig) {
   const fields = [];
   const seen = new Set();
 
@@ -156,9 +163,8 @@ export function extractFieldReferences(visualConfig) {
     }
   }
 
-  // 1. Extract from prototypeQuery.Select
+  // 1. Extract from prototypeQuery.Select (traditional PBI format)
   const query = visualConfig.prototypeQuery || visualConfig.query;
-  // Build source alias map from From clause: { "p" -> "Products", "s" -> "Sales" }
   const sourceAliasMap = {};
   if (query?.From) {
     for (const from of query.From) {
@@ -174,7 +180,43 @@ export function extractFieldReferences(visualConfig) {
     }
   }
 
-  // 2. Extract from dataRoleBindings / columnBindings
+  // 2. Extract from PBIR queryState projections
+  // PBIR format: visual.query.queryState.<DataRole>.projections[].field
+  // Each field is { Column: { Expression: { SourceRef: { Entity } }, Property } }
+  // or { Measure: { Expression: { SourceRef: { Entity } }, Property } }
+  const queryState = visualConfig.query?.queryState || visualConfig.queryState;
+  if (queryState) {
+    for (const [role, roleState] of Object.entries(queryState)) {
+      if (!roleState || typeof roleState !== 'object') continue;
+
+      // Extract from projections
+      const projections = roleState.projections;
+      if (Array.isArray(projections)) {
+        for (const proj of projections) {
+          const ref = extractFromPbirProjection(proj, role);
+          if (ref) addField(ref);
+        }
+      }
+
+      // Extract field parameters
+      const fieldParams = roleState.fieldParameters;
+      if (Array.isArray(fieldParams)) {
+        for (const fp of fieldParams) {
+          const paramExpr = fp.parameterExpr || fp.ParameterExpr;
+          if (!paramExpr) continue;
+          const col = paramExpr.Column || paramExpr.column;
+          if (!col) continue;
+          const sourceRef = col.Expression?.SourceRef || col.expression?.sourceRef;
+          const entity = sourceRef?.Entity || sourceRef?.entity || '';
+          if (entity) {
+            addField({ type: 'fieldParameter', table: entity, column: null, measure: null, role });
+          }
+        }
+      }
+    }
+  }
+
+  // 3. Extract from dataRoleBindings / columnBindings (older format)
   const bindings = visualConfig.dataRoleBindings || visualConfig.columnBindings;
   if (bindings) {
     for (const [role, binding] of Object.entries(bindings)) {
@@ -186,13 +228,119 @@ export function extractFieldReferences(visualConfig) {
     }
   }
 
-  // 3. Deep search for SourceRef patterns in vcObjects, objects, projections
+  // 4. Extract from filterConfig.filters (PBIR format — at top-level config)
+  const filterConfig = fullConfig?.filterConfig?.filters || visualConfig.filterConfig?.filters || [];
+  for (const filter of filterConfig) {
+    if (filter.field) {
+      const ref = extractFromPbirField(filter.field, 'filter');
+      if (ref) addField(ref);
+    }
+  }
+
+  // 5. Deep search for SourceRef patterns in vcObjects, objects, projections, dataTransforms
   deepSearchForRefs(visualConfig.vcObjects, addField);
-  deepSearchForRefs(visualConfig.objects, addField);
-  deepSearchForRefs(visualConfig.projections, addField);
+  deepSearchForRefs(visualConfig.visualContainerObjects, addField);
   deepSearchForRefs(visualConfig.dataTransforms, addField);
 
   return fields;
+}
+
+/**
+ * Extract a field reference from a PBIR queryState projection item.
+ * PBIR format: { field: { Measure: { Expression: { SourceRef: { Entity } }, Property } } }
+ * or { field: { Column: { Expression: { SourceRef: { Entity } }, Property } } }
+ */
+function extractFromPbirProjection(proj, role) {
+  const field = proj?.field;
+  if (!field) return null;
+  return extractFromPbirField(field, role);
+}
+
+/**
+ * Extract a field reference from a PBIR field object.
+ * Handles both Measure and Column patterns with direct Entity references.
+ */
+function extractFromPbirField(field, role) {
+  if (!field) return null;
+
+  // Measure reference
+  if (field.Measure) {
+    const entity = field.Measure.Expression?.SourceRef?.Entity || '';
+    const property = field.Measure.Property || '';
+    if (entity || property) {
+      return { type: 'measure', table: entity, column: null, measure: property, role: role || '' };
+    }
+  }
+
+  // Column reference
+  if (field.Column) {
+    const entity = field.Column.Expression?.SourceRef?.Entity || '';
+    const property = field.Column.Property || '';
+    if (entity || property) {
+      return { type: 'column', table: entity, column: property, measure: null, role: role || '' };
+    }
+  }
+
+  // Aggregation wrapping a column
+  if (field.Aggregation) {
+    const expr = field.Aggregation.Expression;
+    if (expr?.Column) {
+      const entity = expr.Column.Expression?.SourceRef?.Entity || '';
+      const property = expr.Column.Property || '';
+      if (entity || property) {
+        return { type: 'column', table: entity, column: property, measure: null, role: role || '' };
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Extract field parameter table references from a visual's queryState.
+ * When a visual uses a field parameter, the queryState contains a fieldParameters
+ * block under data roles (Values, Rows, Columns, etc.) that references the
+ * field parameter table via parameterExpr.Column.Expression.SourceRef.Entity.
+ * @param {object} queryState - The visual's queryState object.
+ * @param {function} addField - Callback to add found field references.
+ * @param {object} sourceAliasMap - Map of source aliases to entity names.
+ */
+function extractFieldParameterRefs(queryState, addField, sourceAliasMap) {
+  if (!queryState || typeof queryState !== 'object') return;
+
+  // Walk each data role (Values, Rows, Columns, etc.)
+  for (const [role, roleState] of Object.entries(queryState)) {
+    if (!roleState || typeof roleState !== 'object') continue;
+
+    // Check for fieldParameters array
+    const fieldParams = roleState.fieldParameters;
+    if (!Array.isArray(fieldParams)) continue;
+
+    for (const fp of fieldParams) {
+      // Extract the field parameter table name from parameterExpr
+      const paramExpr = fp.parameterExpr || fp.ParameterExpr;
+      if (!paramExpr) continue;
+
+      const col = paramExpr.Column || paramExpr.column;
+      if (!col) continue;
+
+      const sourceRef = col.Expression?.SourceRef || col.expression?.sourceRef;
+      if (!sourceRef) continue;
+
+      const entity = sourceRef.Entity || sourceRef.entity ||
+        (sourceRef.Source && sourceAliasMap[sourceRef.Source]) || '';
+
+      if (entity) {
+        addField({
+          type: 'fieldParameter',
+          table: entity,
+          column: null,
+          measure: null,
+          role: role,
+        });
+      }
+    }
+  }
 }
 
 /**

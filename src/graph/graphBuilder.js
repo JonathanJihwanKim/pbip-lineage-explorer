@@ -5,7 +5,8 @@
  */
 
 import { NODE_TYPES, EDGE_TYPES } from '../utils/constants.js';
-import { extractMDataSource } from '../parser/tmdlParser.js';
+import { extractMDataSource, extractRenameColumns } from '../parser/tmdlParser.js';
+import { extractUseRelationshipRefs } from '../parser/daxParser.js';
 
 /**
  * Create a graph node.
@@ -59,7 +60,7 @@ function extractDaxReferences(expression, currentTable, allNodes) {
     }
   }
 
-  // Match unqualified [FieldName] (refers to same table)
+  // Match unqualified [FieldName] (refers to same table first, then any table)
   const unqualifiedPattern = /(?<!'[^']*)\[([^\]]+)\]/g;
   while ((match = unqualifiedPattern.exec(expression)) !== null) {
     const field = match[1].trim();
@@ -70,6 +71,29 @@ function extractDaxReferences(expression, currentTable, allNodes) {
       refs.push(measureId);
     } else if (allNodes.has(colId) && !refs.includes(colId)) {
       refs.push(colId);
+    } else {
+      // Search ALL tables for a matching measure (DAX allows cross-table unqualified refs)
+      let found = false;
+      for (const [nodeId, node] of allNodes) {
+        if (node.type === 'measure' && node.name === field && nodeId !== `measure::${currentTable}.${field}`) {
+          if (!refs.includes(nodeId)) {
+            refs.push(nodeId);
+            found = true;
+            break;
+          }
+        }
+      }
+      // If no measure found, search for column across tables
+      if (!found) {
+        for (const [nodeId, node] of allNodes) {
+          if (node.type === 'column' && node.name === field && nodeId !== `column::${currentTable}.${field}`) {
+            if (!refs.includes(nodeId)) {
+              refs.push(nodeId);
+              break;
+            }
+          }
+        }
+      }
     }
   }
 
@@ -157,6 +181,19 @@ export function buildGraph(parsedModel, parsedReport, enrichments) {
               edges.push(createEdge(measureId, refId, edgeType));
             }
           }
+
+          // Extract USERELATIONSHIP references — both columns are part of lineage
+          const urRefs = extractUseRelationshipRefs(measure.expression || '');
+          for (const ur of urRefs) {
+            const fromColId = `column::${ur.fromTable}.${ur.fromColumn}`;
+            const toColId = `column::${ur.toTable}.${ur.toColumn}`;
+            if (nodes.has(fromColId)) {
+              edges.push(createEdge(measureId, fromColId, EDGE_TYPES.MEASURE_TO_USERELATIONSHIP));
+            }
+            if (nodes.has(toColId)) {
+              edges.push(createEdge(measureId, toColId, EDGE_TYPES.MEASURE_TO_USERELATIONSHIP));
+            }
+          }
         }
       }
 
@@ -169,7 +206,11 @@ export function buildGraph(parsedModel, parsedReport, enrichments) {
             for (const refId of refs) {
               if (refId === colId) continue;
               if (nodes.has(refId)) {
-                edges.push(createEdge(colId, refId, EDGE_TYPES.MEASURE_TO_COLUMN));
+                const refNode = nodes.get(refId);
+                const edgeType = refNode.type === NODE_TYPES.MEASURE
+                  ? EDGE_TYPES.CALC_COLUMN_TO_MEASURE
+                  : EDGE_TYPES.CALC_COLUMN_TO_COLUMN;
+                edges.push(createEdge(colId, refId, edgeType));
               }
             }
           }
@@ -188,12 +229,83 @@ export function buildGraph(parsedModel, parsedReport, enrichments) {
       }
     }
 
+    // --- Build parameter map for PQ expression substitution ---
+    const pqParameters = parsedModel.parameters || new Map();
+
+    /**
+     * Substitute known PQ parameters in an M expression string.
+     * Replaces parameter identifiers (not in quotes) with their resolved values.
+     */
+    function resolveParameters(mExpr) {
+      if (!mExpr || pqParameters.size === 0) return mExpr;
+      let resolved = mExpr;
+      for (const [paramName, paramValue] of pqParameters) {
+        // Replace parameter name as a standalone identifier (not inside quotes)
+        const paramRegex = new RegExp(`(?<![\\w"'])\\b${paramName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b(?![\\w"'])`, 'g');
+        resolved = resolved.replace(paramRegex, `"${paramValue}"`);
+      }
+      return resolved;
+    }
+
+    // --- Create expression nodes from expressions.tmdl ---
+    const expressionMap = new Map();
+    if (parsedModel.expressions) {
+      for (const expr of parsedModel.expressions) {
+        if (expr.kind === 'expression') {
+          const exprId = `expression::${expr.name}`;
+          nodes.set(exprId, createNode(exprId, expr.name, NODE_TYPES.EXPRESSION, {
+            mExpression: expr.mExpression,
+          }));
+          expressionMap.set(expr.name, expr);
+
+          // Try to extract data source from the expression
+          const resolvedExpr = resolveParameters(expr.mExpression);
+          const ds = extractMDataSource(resolvedExpr);
+          if (ds) {
+            const sourceKey = ds.database
+              ? `${(ds.server || '').toLowerCase()}/${ds.database}`
+              : (ds.server || '').toLowerCase();
+            if (sourceKey) {
+              const sourceId = `source::${sourceKey}`;
+              if (!nodes.has(sourceId)) {
+                const displayName = ds.database || ds.server || sourceKey;
+                nodes.set(sourceId, createNode(sourceId, displayName, NODE_TYPES.SOURCE, {
+                  server: ds.server,
+                  database: ds.database,
+                  sourceType: ds.type
+                }));
+              }
+              edges.push(createEdge(exprId, sourceId, EDGE_TYPES.EXPRESSION_TO_SOURCE));
+            }
+            // Store source info on the expression node
+            const exprNode = nodes.get(exprId);
+            if (exprNode) {
+              exprNode.metadata.dataSource = ds;
+            }
+          }
+        }
+      }
+    }
+
     // --- Create source nodes from partition M expressions ---
     const sourceNodeCache = new Map();
     for (const table of parsedModel.tables) {
+      // Collect source expressions: from partitions, or from refreshPolicy
+      const sourceExpressions = [];
       for (const partition of (table.partitions || [])) {
+        if (partition.sourceExpression) {
+          sourceExpressions.push(partition);
+        }
+      }
+      // Fallback to refreshPolicy source if no partition source found
+      if (sourceExpressions.length === 0 && table.refreshPolicySource) {
+        sourceExpressions.push({ sourceExpression: table.refreshPolicySource, mode: 'import' });
+      }
+
+      for (const partition of sourceExpressions) {
         if (!partition.sourceExpression) continue;
-        const ds = extractMDataSource(partition.sourceExpression);
+        const resolvedExpr = resolveParameters(partition.sourceExpression);
+        const ds = extractMDataSource(resolvedExpr);
         if (!ds) continue;
 
         // Build deduplicated source key
@@ -228,6 +340,57 @@ export function buildGraph(parsedModel, parsedReport, enrichments) {
             sourceType: ds.type,
             mode: partition.mode
           };
+
+          // Extract column rename mappings from the M expression
+          const renameMap = extractRenameColumns(resolvedExpr);
+          if (renameMap.size > 0) {
+            tableNode.metadata.renameMap = Object.fromEntries(renameMap);
+          }
+        }
+
+        // Check if partition references a named expression from expressions.tmdl
+        const exprRefMatch = partition.sourceExpression.match(/^\s*(\w[\w_]*)\s*$/);
+        if (exprRefMatch && expressionMap.has(exprRefMatch[1])) {
+          const exprId = `expression::${exprRefMatch[1]}`;
+          if (nodes.has(exprId)) {
+            edges.push(createEdge(tableId, exprId, EDGE_TYPES.TABLE_TO_EXPRESSION));
+          }
+        }
+      }
+    }
+  }
+
+  // --- Column-level source mapping ---
+  // For each column, determine the original source column name using rename maps
+  if (parsedModel && parsedModel.tables) {
+    for (const table of parsedModel.tables) {
+      const tableId = `table::${table.name}`;
+      const tableNode = nodes.get(tableId);
+      if (!tableNode?.metadata?.dataSource) continue;
+
+      const renameMap = tableNode.metadata.renameMap || {};
+      const ds = tableNode.metadata.dataSource;
+
+      for (const col of (table.columns || [])) {
+        const colId = `column::${table.name}.${col.name}`;
+        const colNode = nodes.get(colId);
+        if (!colNode) continue;
+
+        // Determine the original source column name
+        const sourceCol = col.sourceColumn || col.name;
+        // Check if sourceColumn was renamed from an original name
+        const originalCol = renameMap[sourceCol] || sourceCol;
+
+        colNode.metadata.sourceColumn = sourceCol;
+        colNode.metadata.originalSourceColumn = originalCol;
+        colNode.metadata.wasRenamed = originalCol !== sourceCol;
+        // Store the full BigQuery path if available
+        if (ds.sourceTable) {
+          const fullTable = ds.schema
+            ? `${ds.schema}.${ds.sourceTable}`
+            : ds.sourceTable;
+          colNode.metadata.bigQueryColumn = `${fullTable}.${originalCol}`;
+          colNode.metadata.bigQueryTable = fullTable;
         }
       }
     }
@@ -256,11 +419,25 @@ export function buildGraph(parsedModel, parsedReport, enrichments) {
           edges.push(createEdge(visualId, pageId, EDGE_TYPES.VISUAL_TO_PAGE));
         }
 
+        // Store page name on visual metadata for display
+        const pageNode = nodes.get(pageId);
+        if (pageNode) {
+          const vNode = nodes.get(visualId);
+          if (vNode) vNode.metadata.pageName = pageNode.name;
+        }
+
         // Visual references fields
         if (visual.fields) {
           for (const field of visual.fields) {
             let fieldId;
-            if (field.type === 'measure' && field.table && field.measure) {
+            if (field.type === 'fieldParameter' && field.table) {
+              // Field parameter reference — link visual to the FP table
+              const fpTableId = `table::${field.table}`;
+              if (nodes.has(fpTableId)) {
+                edges.push(createEdge(visualId, fpTableId, EDGE_TYPES.VISUAL_TO_FIELD));
+              }
+              continue; // Don't create placeholder for FP tables
+            } else if (field.type === 'measure' && field.table && field.measure) {
               fieldId = `measure::${field.table}.${field.measure}`;
             } else if (field.table && field.column) {
               fieldId = `column::${field.table}.${field.column}`;
@@ -345,7 +522,7 @@ export function buildGraph(parsedModel, parsedReport, enrichments) {
  * @returns {{ tables: number, columns: number, measures: number, visuals: number, pages: number, edges: number, orphanedMeasures: number }}
  */
 export function computeStats(graph) {
-  const counts = { tables: 0, columns: 0, measures: 0, visuals: 0, pages: 0, sources: 0 };
+  const counts = { tables: 0, columns: 0, measures: 0, visuals: 0, pages: 0, sources: 0, expressions: 0 };
 
   for (const node of graph.nodes.values()) {
     switch (node.type) {
@@ -355,6 +532,7 @@ export function computeStats(graph) {
       case NODE_TYPES.VISUAL: counts.visuals++; break;
       case NODE_TYPES.PAGE: counts.pages++; break;
       case NODE_TYPES.SOURCE: counts.sources++; break;
+      case NODE_TYPES.EXPRESSION: counts.expressions++; break;
     }
   }
 

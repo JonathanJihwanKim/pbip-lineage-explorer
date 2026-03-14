@@ -172,8 +172,8 @@ export function applyEnrichments(graph, enrichments) {
   }
 
   // Tag matching nodes
-  for (const node of graph.nodes) {
-    const tableName = node.metadata?.tableName || node.label || node.id;
+  for (const node of graph.nodes.values()) {
+    const tableName = node.metadata?.table || node.name || node.id;
 
     if (fpMap.has(tableName)) {
       const fp = fpMap.get(tableName);

@@ -111,18 +111,42 @@ function isDAXKeyword(name) {
 }
 
 /**
+ * Extract USERELATIONSHIP column references from a DAX expression.
+ * USERELATIONSHIP(Table1[Col1], Table2[Col2]) creates alternate join paths.
+ * Both referenced columns are part of the measure's lineage.
+ * @param {string} dax - The DAX expression.
+ * @returns {Array<{fromTable: string, fromColumn: string, toTable: string, toColumn: string}>}
+ */
+export function extractUseRelationshipRefs(dax) {
+  const clean = stripStringsAndComments(dax);
+  const pattern = /USERELATIONSHIP\s*\(\s*(?:'([^']+)'|([A-Za-z_]\w*))\[([^\]]+)\]\s*,\s*(?:'([^']+)'|([A-Za-z_]\w*))\[([^\]]+)\]\s*\)/gi;
+  const refs = [];
+  let m;
+  while ((m = pattern.exec(clean)) !== null) {
+    refs.push({
+      fromTable: m[1] || m[2],
+      fromColumn: m[3],
+      toTable: m[4] || m[5],
+      toColumn: m[6],
+    });
+  }
+  return refs;
+}
+
+/**
  * Parse a DAX expression and extract all referenced objects.
  * @param {string} daxExpression - The DAX formula text.
- * @returns {{ tableRefs: string[], columnRefs: Array<{table: string, column: string}>, measureRefs: Array<{measure: string, table?: string}> }}
+ * @returns {{ tableRefs: string[], columnRefs: Array<{table: string, column: string}>, measureRefs: Array<{measure: string, table?: string}>, useRelationshipRefs: Array }}
  */
 export function parseDaxExpression(daxExpression) {
   if (!daxExpression || typeof daxExpression !== 'string') {
-    return { tableRefs: [], columnRefs: [], measureRefs: [] };
+    return { tableRefs: [], columnRefs: [], measureRefs: [], useRelationshipRefs: [] };
   }
 
   const columnRefs = extractColumnRefs(daxExpression);
   const measureRefs = extractMeasureRefs(daxExpression);
   const tableRefs = extractTableRefs(daxExpression);
+  const useRelationshipRefs = extractUseRelationshipRefs(daxExpression);
 
   // Also add tables from column refs that aren't already in tableRefs
   const tableSet = new Set(tableRefs);
@@ -133,5 +157,5 @@ export function parseDaxExpression(daxExpression) {
     }
   }
 
-  return { tableRefs, columnRefs, measureRefs };
+  return { tableRefs, columnRefs, measureRefs, useRelationshipRefs };
 }

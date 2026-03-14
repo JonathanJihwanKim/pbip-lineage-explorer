@@ -4,7 +4,8 @@ export const NODE_TYPES = {
   MEASURE: 'measure',
   VISUAL: 'visual',
   PAGE: 'page',
-  SOURCE: 'source'
+  SOURCE: 'source',
+  EXPRESSION: 'expression',
 };
 
 export const NODE_COLORS = {
@@ -13,7 +14,8 @@ export const NODE_COLORS = {
   measure: '#ff9800',
   visual: '#4caf50',
   page: '#00bcd4',
-  source: '#757575'
+  source: '#757575',
+  expression: '#795548',
 };
 
 export const NODE_LABELS = {
@@ -22,7 +24,25 @@ export const NODE_LABELS = {
   measure: 'Measure',
   visual: 'Visual',
   page: 'Page',
-  source: 'Source'
+  source: 'Source',
+  expression: 'Expression',
+};
+
+export const EDGE_COLORS = {
+  visual_to_field: '#4caf50',
+  visual_to_page: '#00bcd4',
+  measure_to_measure: '#ff9800',
+  measure_to_column: '#ce93d8',
+  measure_to_userelationship: '#ff5722',
+  column_to_table: '#64b5f6',
+  calc_column_to_column: '#ba68c8',
+  calc_column_to_measure: '#ffb74d',
+  table_relationship: '#546e7a',
+  table_to_source: '#90a4ae',
+  table_to_expression: '#8d6e63',
+  expression_to_source: '#a1887f',
+  field_param_to_field: '#e91e63',
+  column_to_source_column: '#78909c',
 };
 
 export const EDGE_TYPES = {
@@ -33,7 +53,13 @@ export const EDGE_TYPES = {
   TABLE_RELATIONSHIP: 'table_relationship',
   VISUAL_TO_PAGE: 'visual_to_page',
   FIELD_PARAM_TO_FIELD: 'field_param_to_field',
-  TABLE_TO_SOURCE: 'table_to_source'
+  TABLE_TO_SOURCE: 'table_to_source',
+  CALC_COLUMN_TO_COLUMN: 'calc_column_to_column',
+  CALC_COLUMN_TO_MEASURE: 'calc_column_to_measure',
+  MEASURE_TO_USERELATIONSHIP: 'measure_to_userelationship',
+  TABLE_TO_EXPRESSION: 'table_to_expression',
+  EXPRESSION_TO_SOURCE: 'expression_to_source',
+  COLUMN_TO_SOURCE_COLUMN: 'column_to_source_column',
 };
 
 export const ENRICHMENT_TYPES = {
@@ -41,7 +67,22 @@ export const ENRICHMENT_TYPES = {
   CALCULATION_GROUP: 'calculation_group'
 };
 
-export const LAYOUT_TYPES = {
-  FORCE: 'force',
-  TREE: 'tree'
+/** Colors for the 6-layer lineage tree visualization */
+export const LAYER_COLORS = {
+  visual: '#4caf50',
+  measure: '#ff9800',
+  subMeasure: '#ffb74d',
+  column: '#9c27b0',
+  expression: '#795548',
+  source: '#607d8b',
+};
+
+/** Labels for the 6 lineage layers */
+export const LAYER_LABELS = {
+  1: 'Report Visual',
+  2: 'DAX Measure',
+  3: 'DAX Sub-Measure',
+  4: 'PBI Table & Column',
+  5: 'Power Query',
+  6: 'Source Connection',
 };

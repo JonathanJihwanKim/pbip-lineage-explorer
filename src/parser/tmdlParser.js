@@ -135,6 +135,16 @@ export function parseTableFile(content, fileName) {
         i++;
         continue;
       }
+
+      // refreshPolicy block (for incremental refresh tables)
+      if (trimmed === 'refreshPolicy') {
+        const rpSource = parseRefreshPolicyBlock(lines, i);
+        if (rpSource) {
+          result.refreshPolicySource = rpSource;
+        }
+        i++;
+        continue;
+      }
     }
 
     i++;
@@ -307,6 +317,78 @@ function parsePartitionBlock(lines, startIndex, name, type) {
 }
 
 /**
+ * Extract column rename mappings from a Power Query M expression.
+ * Parses Table.RenameColumns(source, {{"OldName", "NewName"}, ...}).
+ * @param {string} mExpression - The M/Power Query expression text.
+ * @returns {Map<string, string>} Map of newName -> oldName (PBI column -> source column).
+ */
+export function extractRenameColumns(mExpression) {
+  const renameMap = new Map();
+  if (!mExpression) return renameMap;
+
+  // Match Table.RenameColumns(..., { {"old", "new"}, {"old2", "new2"} })
+  const renameBlockMatch = mExpression.match(/Table\.RenameColumns\s*\([^,]+,\s*\{([\s\S]*?)\}\s*\)/i);
+  if (!renameBlockMatch) return renameMap;
+
+  const block = renameBlockMatch[1];
+  // Match individual pairs: {"OldName", "NewName"}
+  const pairPattern = /\{\s*"([^"]+)"\s*,\s*"([^"]+)"\s*\}/g;
+  let m;
+  while ((m = pairPattern.exec(block)) !== null) {
+    const oldName = m[1];
+    const newName = m[2];
+    renameMap.set(newName, oldName); // PBI column name -> source column name
+  }
+
+  return renameMap;
+}
+
+/**
+ * Parse a refreshPolicy block to extract sourceExpression.
+ * Used by incremental refresh tables where source M expression
+ * lives inside refreshPolicy rather than a partition block.
+ * @param {string[]} lines
+ * @param {number} startIndex
+ * @returns {string|null} The M source expression, or null.
+ */
+function parseRefreshPolicyBlock(lines, startIndex) {
+  const baseIndent = getIndentLevel(lines[startIndex]);
+  let i = startIndex + 1;
+
+  while (i < lines.length) {
+    const line = lines[i];
+    const trimmed = line.trim();
+    if (!trimmed) { i++; continue; }
+
+    const indent = getIndentLevel(line);
+    if (indent <= baseIndent) break;
+
+    // Look for sourceExpression
+    const sourceMatch = trimmed.match(/^sourceExpression\s*[:=]\s*(.*)$/i);
+    if (sourceMatch) {
+      const firstPart = sourceMatch[1].trim();
+      const parts = firstPart ? [firstPart] : [];
+      const sourceIndent = getIndentLevel(line);
+      let j = i + 1;
+      while (j < lines.length) {
+        const sLine = lines[j];
+        const sTrimmed = sLine.trim();
+        if (!sTrimmed) { j++; continue; }
+        const sIndent = getIndentLevel(sLine);
+        if (sIndent <= sourceIndent) break;
+        parts.push(sTrimmed);
+        j++;
+      }
+      return parts.join('\n').trim() || null;
+    }
+
+    i++;
+  }
+
+  return null;
+}
+
+/**
  * Extract data source connection details from an M expression.
  * Lightweight regex-based parser for common Power Query patterns.
  * @param {string} mExpression - The M/Power Query expression text.
@@ -345,6 +427,57 @@ export function extractMDataSource(mExpression) {
     }
   }
 
+  // GoogleBigQuery.Database — Pattern A: Schema navigation
+  if (!result.type) {
+    const bqMatch = mExpression.match(/GoogleBigQuery\.Database\s*\(\s*(?:"([^"]*)"|\[([^\]]*)\]|(\w+))/i);
+    if (bqMatch) {
+      result.type = 'BigQuery';
+      result.server = bqMatch[1] || bqMatch[2] || bqMatch[3] || null; // project
+
+      // Extract schema navigation: {[Name="dataset"]} followed by {[Name="table"]}
+      const nameMatches = [...mExpression.matchAll(/\{\s*\[\s*(?:Name|Schema)\s*=\s*"([^"]+)"\s*\]\s*\}/gi)];
+      if (nameMatches.length >= 2) {
+        result.database = nameMatches[0][1]; // dataset
+        result.sourceTable = nameMatches[1][1]; // table
+      } else if (nameMatches.length === 1) {
+        result.database = nameMatches[0][1]; // dataset (table might be in a different pattern)
+      }
+
+      // Also check Schema/Item pattern for BigQuery
+      const bqSchemaItem = mExpression.match(/\{[^}]*Schema\s*=\s*"([^"]+)"[^}]*Item\s*=\s*"([^"]+)"[^}]*\}/i);
+      if (bqSchemaItem) {
+        result.database = bqSchemaItem[1]; // dataset
+        result.sourceTable = bqSchemaItem[2]; // table
+      }
+    }
+  }
+
+  // Value.NativeQuery — Pattern B: Inline SQL (used with BigQuery and others)
+  if (!result.sourceTable) {
+    const nativeQueryMatch = mExpression.match(/Value\.NativeQuery\s*\([^,]*,\s*"([\s\S]*?)"\s*[,)]/i);
+    if (nativeQueryMatch) {
+      const sql = nativeQueryMatch[1];
+      // Extract FROM clause: FROM `project.dataset.table` or FROM dataset.table
+      const fromMatch = sql.match(/FROM\s+`?([A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+){1,2})`?/i);
+      if (fromMatch) {
+        const parts = fromMatch[1].split('.');
+        if (parts.length === 3) {
+          // project.dataset.table
+          result.server = result.server || parts[0];
+          result.database = parts[1];
+          result.sourceTable = parts[2];
+        } else if (parts.length === 2) {
+          // dataset.table
+          result.database = parts[0];
+          result.sourceTable = parts[1];
+        }
+      }
+      if (!result.type && (result.database || result.sourceTable)) {
+        result.type = result.type || 'SQL/NativeQuery';
+      }
+    }
+  }
+
   // Web.Contents("url")
   if (!result.server) {
     const webMatch = mExpression.match(/Web\.Contents\s*\(\s*"([^"]+)"/i);
@@ -363,6 +496,91 @@ export function extractMDataSource(mExpression) {
   }
 
   return (result.server || result.database || result.sourceTable) ? result : null;
+}
+
+/**
+ * Parse an expressions.tmdl file.
+ * Extracts named Power Query expressions and parameter values.
+ * @param {string} content - The raw TMDL expressions file content.
+ * @returns {{ expressions: Array<{name: string, mExpression: string, kind: string}>, parameters: Map<string, string> }}
+ */
+export function parseExpressions(content) {
+  const lines = content.split('\n').map(l => l.replace(/\r$/, ''));
+  const expressions = [];
+  const parameters = new Map();
+
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    const trimmed = line.trim();
+
+    // Match expression declaration: expression <name> = m  OR  expression <name> = "value"
+    const exprMatch = trimmed.match(/^expression\s+(.+?)\s*=\s*(.*)$/);
+    if (exprMatch) {
+      const name = unquoteName(exprMatch[1].trim());
+      const firstPart = exprMatch[2].trim();
+
+      // Check if it's a simple literal parameter (e.g., expression _Dataset = "my_dataset")
+      const literalMatch = firstPart.match(/^"([^"]*)"$/);
+      if (literalMatch) {
+        parameters.set(name, literalMatch[1]);
+        expressions.push({ name, mExpression: literalMatch[1], kind: 'parameter' });
+        i++;
+        continue;
+      }
+
+      // Otherwise it's an M expression block (e.g., expression name = m\n  let\n  ...)
+      const baseIndent = getIndentLevel(line);
+      const parts = [];
+      // firstPart may be 'm' or empty or start of expression
+      if (firstPart && firstPart !== 'm') {
+        parts.push(firstPart);
+      }
+
+      let j = i + 1;
+      while (j < lines.length) {
+        const eLine = lines[j];
+        const eTrimmed = eLine.trim();
+        if (!eTrimmed) { j++; continue; }
+
+        const eIndent = getIndentLevel(eLine);
+        if (eIndent <= baseIndent) {
+          // Check if it's a property line (like annotation, lineageTag, etc.)
+          const propMatch = eTrimmed.match(/^(\w+)\s*[:=]/);
+          if (propMatch && eIndent === baseIndent + 1) {
+            // Skip properties, keep reading
+            j++;
+            continue;
+          }
+          break;
+        }
+
+        // Skip known property lines
+        if (eTrimmed.match(/^(annotation|lineageTag|queryGroup|description)\s*[:=]/i)) {
+          j++;
+          continue;
+        }
+
+        parts.push(eTrimmed);
+        j++;
+      }
+
+      const mExpression = parts.join('\n').trim();
+      expressions.push({ name, mExpression, kind: mExpression ? 'expression' : 'parameter' });
+
+      // If it looks like a simple value, also store as parameter
+      if (!mExpression.includes('\n') && mExpression.startsWith('"') && mExpression.endsWith('"')) {
+        parameters.set(name, mExpression.slice(1, -1));
+      }
+
+      i = j;
+      continue;
+    }
+
+    i++;
+  }
+
+  return { expressions, parameters };
 }
 
 /**

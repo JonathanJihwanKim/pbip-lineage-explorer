@@ -1,475 +1,419 @@
 /**
  * Main entry point for PBIP Lineage Explorer.
  * Orchestrates parsing, graph building, and UI initialization.
+ * Single-view: measure picker + lineage trace output with D3 tree visualization.
  */
 
 // Parsers
-import { openReportFolder, openSemanticModelFolder } from './parser/pbipReader.js';
-import { parseTmdlModel } from './parser/tmdlParser.js';
+import { openProjectFolder, loadSelectedReport, loadSemanticModelFolder } from './parser/pbipReader.js';
+import { parseTmdlModel, parseExpressions } from './parser/tmdlParser.js';
 import { parsePbirReport } from './parser/pbirParser.js';
 import { parseDaxExpression } from './parser/daxParser.js';
 import { detectEnrichments, applyEnrichments } from './parser/enrichment.js';
 
 // Graph
 import { buildGraph, computeStats } from './graph/graphBuilder.js';
-import { initRenderer, exportSvg, exportPng } from './graph/graphRenderer.js';
-import { analyzeImpact, findOrphans, extractSubgraph } from './graph/impactAnalysis.js';
+import { traceMeasureLineage, traceVisualLineage } from './graph/lineageTracer.js';
 
 // UI
-import { initSearchPanel, updateFilters, clearSearch } from './ui/searchPanel.js';
-import { initDetailPanel, showNodeDetail, hideDetailPanel } from './ui/detailPanel.js';
-import { initToolbar, updateStats, setActiveLayout, showLoading, hideLoading } from './ui/toolbar.js';
+import { initToolbar, updateStats, showLoading, hideLoading } from './ui/toolbar.js';
+import { initMeasurePicker, populateMeasures, selectMeasure } from './ui/measurePicker.js';
+import { initVisualBrowser, populateVisuals, selectVisual } from './ui/visualBrowser.js';
+import { initLineageView, renderLineage, renderVisualLineage, clearLineage } from './ui/lineageView.js';
 
-// Constants
-import { LAYOUT_TYPES } from './utils/constants.js';
-
-/**
- * Application state.
- */
 const state = {
   graph: null,
-  renderer: null,
-  currentLayout: LAYOUT_TYPES.FORCE,
-  selectedNode: null,
-  orphans: [],
-  focusMode: false,
-  focusNodeId: null,
-  focusGraph: null,
+  reportStructure: null,
+  reportName: null,
+  semanticModelPath: null,
 };
 
-/**
- * Initialize the application on DOMContentLoaded.
- */
+// --- Initialization ---
+
 function init() {
-  // Initialize toolbar
-  initToolbar({
-    onOpenFolder: handleOpenFolder,
-    onLayoutChange: handleLayoutChange,
-    onZoomIn: () => state.renderer?.zoomIn(),
-    onZoomOut: () => state.renderer?.zoomOut(),
-    onZoomReset: () => state.renderer?.zoomReset(),
-    onExportSvg: handleExportSvg,
-    onExportPng: handleExportPng,
+  initToolbar({ onOpenFolder: handleOpenFolder });
+  initMeasurePicker({ onSelect: handleMeasureSelect });
+  initVisualBrowser({ onVisualSelect: handleVisualSelect, onMeasureNavigate: handleMeasureSelect });
+  initLineageView({ onMeasureNavigate: handleMeasureSelect, onVisualNavigate: handleVisualSelect });
+
+  const btnLoadModel = document.getElementById('btn-load-model');
+  if (btnLoadModel) btnLoadModel.addEventListener('click', handleLoadSemanticModel);
+
+  // Sidebar tab switching
+  document.querySelectorAll('.sidebar-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.sidebar-tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
+      tab.classList.add('active');
+      const panelId = `tab-${tab.dataset.tab}`;
+      const panel = document.getElementById(panelId);
+      if (panel) panel.classList.remove('hidden');
+    });
   });
 
-  // Initialize search panel (no graph data yet)
-  initSearchPanel({
-    onSearch: handleSearch,
-    onFilter: handleFilterChange,
-    onOrphanToggle: handleOrphanToggle,
-    graphData: null,
-  });
-
-  // Initialize detail panel
-  initDetailPanel({
-    onNodeNavigate: handleSearch,
-    onClose: handleDetailClose,
-    onAnalyzeImpact: handleAnalyzeImpact,
-  });
+  document.addEventListener('keydown', handleKeyDown);
 }
 
-/**
- * Show the semantic model prompt overlay with a path hint.
- * Returns a promise that resolves when the user clicks Select or Skip.
- * @param {string|null} pathHint - The relative path from definition.pbir
- * @returns {Promise<'select'|'skip'>}
- */
-function showSemanticModelPrompt(pathHint) {
-  return new Promise((resolve) => {
-    const overlay = document.getElementById('semantic-model-prompt');
-    const hintEl = document.getElementById('semantic-model-path-hint');
-    const btnSelect = document.getElementById('btn-select-model');
-    const btnSkip = document.getElementById('btn-skip-model');
+// --- Data Loading ---
 
-    if (hintEl) {
-      hintEl.textContent = pathHint || '(path not found in definition.pbir)';
-    }
-    if (overlay) overlay.classList.remove('hidden');
-
-    function cleanup() {
-      if (btnSelect) btnSelect.removeEventListener('click', onSelect);
-      if (btnSkip) btnSkip.removeEventListener('click', onSkip);
-      if (overlay) overlay.classList.add('hidden');
-    }
-
-    function onSelect() {
-      cleanup();
-      resolve('select');
-    }
-
-    function onSkip() {
-      cleanup();
-      resolve('skip');
-    }
-
-    if (btnSelect) btnSelect.addEventListener('click', onSelect);
-    if (btnSkip) btnSkip.addEventListener('click', onSkip);
-  });
-}
-
-/**
- * Handle Open Report Folder button click.
- */
 async function handleOpenFolder() {
   try {
-    showLoading('Select your .Report folder...');
+    clearWelcomeError();
+    showLoading('Select the folder that contains your .Report and .SemanticModel folders...');
 
-    // Step 1: Open report folder
-    const reportResult = await openReportFolder();
+    const projectResult = await openProjectFolder();
 
-    // Step 2: If definition.pbir found a semantic model path, prompt user
-    let modelStructure = null;
-    if (reportResult.semanticModelPath) {
+    // Multiple reports found — show picker overlay
+    if (projectResult.multipleReports) {
       hideLoading();
-      const choice = await showSemanticModelPrompt(reportResult.semanticModelPath);
-
-      if (choice === 'select') {
-        try {
-          showLoading('Select semantic model folder...');
-          const modelResult = await openSemanticModelFolder();
-          modelStructure = modelResult.modelStructure;
-        } catch (err) {
-          if (err.name === 'AbortError') {
-            // User cancelled - proceed without model
-          } else {
-            throw err;
-          }
-        }
-      }
+      showReportPicker(projectResult.multipleReports, projectResult.modelCandidates);
+      return;
     }
 
-    showLoading('Parsing model...');
+    // Single report (or direct .Report selection) — load immediately
+    await loadProjectResult(projectResult);
+  } catch (err) {
+    hideLoading();
+    hideLoadingOverlay();
+    if (err.name === 'AbortError') return;
+    console.error('Error loading project:', err);
+    showWelcomeError(`Failed to load project: ${err.message}`);
+  }
+}
 
-    // Step 3: Parse TMDL model (if semantic model was loaded)
+/**
+ * Show the report picker overlay when multiple .Report folders are found.
+ */
+function showReportPicker(reportEntries, modelCandidates) {
+  const overlay = document.getElementById('report-picker-overlay');
+  const list = document.getElementById('report-picker-list');
+  if (!overlay || !list) return;
+
+  // Hide welcome overlay
+  const welcome = document.getElementById('welcome-overlay');
+  if (welcome) welcome.classList.add('hidden');
+
+  list.innerHTML = '';
+  for (const entry of reportEntries) {
+    const item = document.createElement('div');
+    item.className = 'report-picker-item';
+    item.textContent = entry.name;
+    item.addEventListener('click', async () => {
+      overlay.classList.add('hidden');
+      try {
+        showLoadingProgress('Loading report...', 10);
+        const result = await loadSelectedReport(entry.handle, modelCandidates);
+        await loadProjectResult(result);
+      } catch (err) {
+        hideLoadingOverlay();
+        console.error('Error loading report:', err);
+        showWelcomeError(`Failed to load report: ${err.message}`);
+      }
+    });
+    list.appendChild(item);
+  }
+
+  overlay.classList.remove('hidden');
+}
+
+/**
+ * Process a loaded project result (single report): parse, build graph, update UI.
+ */
+async function loadProjectResult(projectResult) {
+  const modelStructure = projectResult.modelStructure;
+
+  state.reportStructure = projectResult.reportStructure;
+  state.reportName = projectResult.reportName;
+  state.semanticModelPath = projectResult.semanticModelPath;
+
+  showLoadingProgress('Step 1/5: Parsing model...', 10);
+
+  const tmdlFiles = modelStructure?.tmdlFiles || [];
+  const relationshipFiles = modelStructure?.relationshipFiles || [];
+  const expressionFiles = modelStructure?.expressionFiles || [];
+  const model = parseTmdlModel(tmdlFiles, relationshipFiles);
+
+  let parsedExpressions = { expressions: [], parameters: new Map() };
+  for (const { content } of expressionFiles) {
+    const result = parseExpressions(content);
+    parsedExpressions.expressions.push(...result.expressions);
+    for (const [k, v] of result.parameters) parsedExpressions.parameters.set(k, v);
+  }
+  model.expressions = parsedExpressions.expressions;
+  model.parameters = parsedExpressions.parameters;
+
+  showLoadingProgress('Step 2/5: Parsing DAX...', 30);
+
+  for (const table of model.tables) {
+    for (const measure of (table.measures || [])) {
+      if (measure.expression) measure.daxDeps = parseDaxExpression(measure.expression);
+    }
+    for (const col of (table.calculatedColumns || [])) {
+      if (col.expression) col.daxDeps = parseDaxExpression(col.expression);
+    }
+  }
+
+  showLoadingProgress('Step 3/5: Parsing report...', 50);
+
+  const report = parsePbirReport(
+    projectResult.reportStructure.visualFiles,
+    projectResult.reportStructure.pageFiles
+  );
+
+  const enrichments = detectEnrichments(model.tables);
+
+  showLoadingProgress('Step 4/5: Building graph...', 70);
+
+  let graph = buildGraph(model, report, enrichments);
+  graph = applyEnrichments(graph, enrichments);
+  state.graph = graph;
+
+  showLoadingProgress('Step 5/5: Done!', 100);
+
+  const rawStats = computeStats(graph);
+  const projectName = projectResult.reportName || projectResult.modelName || 'Project';
+  updateStats({
+    projectName,
+    nodeCount: graph.nodes.size,
+    edgeCount: graph.edges.length,
+    byType: {
+      table: rawStats.tables, measure: rawStats.measures,
+      visual: rawStats.visuals, column: rawStats.columns,
+      page: rawStats.pages, source: rawStats.sources,
+    },
+  });
+
+  populateMeasures(graph);
+  populateVisuals(graph);
+
+  // Hide overlays
+  const overlay = document.getElementById('welcome-overlay');
+  if (overlay) overlay.classList.add('hidden');
+
+  // Show/hide model banner based on whether semantic model was loaded
+  const banner = document.getElementById('model-banner');
+  if (banner) {
+    if (!modelStructure) {
+      const modelHint = state.semanticModelPath
+        ? state.semanticModelPath.replace(/^\.\.\//, '').replace(/\/$/, '')
+        : '.SemanticModel';
+      const bannerText = banner.querySelector('.model-banner-text');
+      if (bannerText) bannerText.textContent = `Select the ${modelHint} folder to enable full DAX lineage`;
+      banner.classList.remove('hidden');
+    } else {
+      banner.classList.add('hidden');
+    }
+  }
+
+  hideLoading();
+  hideLoadingOverlay();
+}
+
+// --- Semantic Model Loading ---
+
+async function handleLoadSemanticModel() {
+  try {
+    showLoadingProgress('Select the .SemanticModel folder...', 0);
+    showLoading('Select the .SemanticModel folder...');
+
+    const result = await loadSemanticModelFolder();
+    if (!result) {
+      hideLoadingOverlay();
+      return; // User cancelled
+    }
+
+    showLoadingProgress('Parsing semantic model...', 30);
+
+    const modelStructure = result.modelStructure;
     const tmdlFiles = modelStructure?.tmdlFiles || [];
     const relationshipFiles = modelStructure?.relationshipFiles || [];
+    const expressionFiles = modelStructure?.expressionFiles || [];
     const model = parseTmdlModel(tmdlFiles, relationshipFiles);
 
-    // Step 4: Parse DAX in each measure to get dependency info
+    let parsedExpressions = { expressions: [], parameters: new Map() };
+    for (const { content } of expressionFiles) {
+      const r = parseExpressions(content);
+      parsedExpressions.expressions.push(...r.expressions);
+      for (const [k, v] of r.parameters) parsedExpressions.parameters.set(k, v);
+    }
+    model.expressions = parsedExpressions.expressions;
+    model.parameters = parsedExpressions.parameters;
+
     for (const table of model.tables) {
       for (const measure of (table.measures || [])) {
-        if (measure.expression) {
-          measure.daxDeps = parseDaxExpression(measure.expression);
-        }
+        if (measure.expression) measure.daxDeps = parseDaxExpression(measure.expression);
       }
-      // Also parse calculated column expressions
       for (const col of (table.calculatedColumns || [])) {
-        if (col.expression) {
-          col.daxDeps = parseDaxExpression(col.expression);
-        }
+        if (col.expression) col.daxDeps = parseDaxExpression(col.expression);
       }
     }
 
-    showLoading('Parsing report...');
+    showLoadingProgress('Rebuilding graph...', 70);
 
-    // Step 5: Parse PBIR report
     const report = parsePbirReport(
-      reportResult.reportStructure.visualFiles,
-      reportResult.reportStructure.pageFiles
+      state.reportStructure.visualFiles,
+      state.reportStructure.pageFiles
     );
 
-    // Step 6: Detect enrichments
     const enrichments = detectEnrichments(model.tables);
-
-    showLoading('Building graph...');
-
-    // Step 7: Build graph
     let graph = buildGraph(model, report, enrichments);
-
-    // Step 8: Apply enrichments to graph nodes
     graph = applyEnrichments(graph, enrichments);
-
-    // Step 9: Find orphans
-    const orphans = findOrphans(graph);
-    state.orphans = orphans;
     state.graph = graph;
 
-    showLoading('Rendering...');
+    showLoadingProgress('Done!', 100);
 
-    // Step 10: Initialize renderer
-    const graphContainer = document.getElementById('graph-container');
-    if (state.renderer) {
-      state.renderer.destroy();
-    }
-    state.renderer = initRenderer(graphContainer, graph, {
-      layout: state.currentLayout,
-      onNodeClick: handleNodeClick,
-    });
-
-    // Step 11: Update search panel filters
-    updateFilters(graph);
-
-    // Step 12: Update toolbar stats
     const rawStats = computeStats(graph);
     updateStats({
+      projectName: state.reportName || result.modelName || 'Project',
       nodeCount: graph.nodes.size,
       edgeCount: graph.edges.length,
       byType: {
-        table: rawStats.tables,
-        measure: rawStats.measures,
-        visual: rawStats.visuals,
-        column: rawStats.columns,
-        page: rawStats.pages,
-        source: rawStats.sources
+        table: rawStats.tables, measure: rawStats.measures,
+        visual: rawStats.visuals, column: rawStats.columns,
+        page: rawStats.pages, source: rawStats.sources,
       },
-      orphanCount: orphans.length
     });
 
-    // Step 13: Hide welcome overlay
-    const overlay = document.getElementById('welcome-overlay');
-    if (overlay) overlay.classList.add('hidden');
+    populateMeasures(graph);
+    populateVisuals(graph);
 
-    hideLoading();
+    // Hide the model banner
+    const banner = document.getElementById('model-banner');
+    if (banner) banner.classList.add('hidden');
+
+    hideLoadingOverlay();
   } catch (err) {
-    hideLoading();
-    if (err.name === 'AbortError') {
-      // User cancelled the directory picker
-      return;
-    }
-    console.error('Error loading project:', err);
-    showError(`Failed to load project: ${err.message}`);
+    hideLoadingOverlay();
+    if (err.name === 'AbortError') return;
+    console.error('Error loading semantic model:', err);
+    showError(`Failed to load semantic model: ${err.message}`);
   }
 }
 
-/**
- * Handle clicking a node in the graph.
- */
-function handleNodeClick(node) {
-  if (!node || !state.graph) return;
+// --- Measure Selection ---
 
-  state.selectedNode = node;
-
-  // Analyze impact against the full graph
-  const impact = analyzeImpact(node.id, state.graph);
-
-  // Show detail panel
-  showNodeDetail(node, impact, state.graph, { focusMode: state.focusMode });
-
-  // In focus mode, everything is already visible; otherwise highlight
-  if (!state.focusMode && state.renderer) {
-    const allConnected = [node.id, ...impact.upstream, ...impact.downstream];
-    state.renderer.highlightNodes(allConnected);
-  }
-}
-
-/**
- * Handle search result selection - center graph on node.
- */
-function handleSearch(nodeId) {
+function handleMeasureSelect(measureId) {
   if (!state.graph) return;
 
-  const node = state.graph.nodes.get(nodeId);
-  if (!node) return;
-
-  handleNodeClick(node);
-}
-
-/**
- * Handle filter changes from search panel.
- */
-function handleFilterChange(filters) {
-  if (!state.renderer || !state.graph) return;
-
-  if (filters.type || filters.table) {
-    const matching = [];
-    for (const node of state.graph.nodes.values()) {
-      if (filters.type && node.type !== filters.type) continue;
-      if (filters.table) {
-        const tableName = node.metadata?.table || (node.type === 'table' ? node.name : '');
-        if (tableName !== filters.table) continue;
-      }
-      matching.push(node.id);
-    }
-    state.renderer.highlightNodes(matching);
-  } else {
-    state.renderer.resetHighlight();
+  const node = state.graph.nodes.get(measureId);
+  if (!node || node.type !== 'measure') {
+    console.warn(`handleMeasureSelect: node not found or not a measure: ${measureId}`);
+    showLineageMessage(`Measure not found in graph: ${measureId}`);
+    return;
   }
-}
-
-/**
- * Handle orphan toggle.
- */
-function handleOrphanToggle(showOrphansOnly) {
-  if (!state.renderer || !state.graph) return;
-
-  if (showOrphansOnly && state.orphans.length > 0) {
-    state.renderer.highlightNodes(state.orphans);
-  } else {
-    state.renderer.resetHighlight();
-  }
-}
-
-/**
- * Handle layout change.
- */
-function handleLayoutChange(layout) {
-  state.currentLayout = layout;
-  setActiveLayout(layout);
-  if (state.renderer) {
-    state.renderer.setLayout(layout);
-  }
-}
-
-/**
- * Handle detail panel close.
- */
-function handleDetailClose() {
-  state.selectedNode = null;
-  if (state.focusMode) {
-    exitFocusMode();
-  } else if (state.renderer) {
-    state.renderer.resetHighlight();
-  }
-}
-
-/**
- * Handle Focus Lineage button in detail panel - enter focus mode.
- */
-function handleAnalyzeImpact(nodeId, impact) {
-  if (!state.renderer || !state.graph) return;
-
-  // Extract subgraph with only upstream + downstream nodes
-  const subgraph = extractSubgraph(nodeId, state.graph);
-  state.focusMode = true;
-  state.focusNodeId = nodeId;
-  state.focusGraph = subgraph;
-
-  // Switch renderer to subgraph with tree layout
-  state.renderer.update(subgraph);
-  state.renderer.setLayout(LAYOUT_TYPES.TREE);
-
-  // Zoom to fit after layout settles
-  setTimeout(() => {
-    state.renderer.zoomToFit();
-  }, 150);
-
-  // Show back button
-  showFocusModeUI();
-
-  // Refresh detail panel in focus mode
-  const node = state.graph.nodes.get(nodeId);
-  if (node) {
-    const fullImpact = impact || analyzeImpact(nodeId, state.graph);
-    showNodeDetail(node, fullImpact, state.graph, { focusMode: true });
-  }
-}
-
-/**
- * Exit focus mode and restore the full graph.
- */
-function exitFocusMode() {
-  if (!state.focusMode) return;
-
-  state.focusMode = false;
-  state.focusNodeId = null;
-  state.focusGraph = null;
-
-  // Restore full graph and original layout
-  state.renderer.update(state.graph);
-  state.renderer.setLayout(state.currentLayout);
-  state.renderer.resetHighlight();
-
-  hideFocusModeUI();
-  hideDetailPanel();
-}
-
-/**
- * Show the focus mode back button in the toolbar.
- */
-function showFocusModeUI() {
-  let backBtn = document.getElementById('btn-exit-focus');
-  if (!backBtn) {
-    backBtn = document.createElement('button');
-    backBtn.id = 'btn-exit-focus';
-    backBtn.className = 'btn-focus-back';
-    backBtn.textContent = '\u2190 Back to Full Graph';
-    backBtn.addEventListener('click', exitFocusMode);
-    const toolbar = document.querySelector('.toolbar-left');
-    if (toolbar) toolbar.appendChild(backBtn);
-  }
-  backBtn.style.display = 'inline-block';
-}
-
-/**
- * Hide the focus mode back button.
- */
-function hideFocusModeUI() {
-  const backBtn = document.getElementById('btn-exit-focus');
-  if (backBtn) backBtn.style.display = 'none';
-}
-
-/**
- * Export graph as SVG.
- */
-function handleExportSvg() {
-  const container = document.getElementById('graph-container');
-  const svgElement = container?.querySelector('svg');
-  if (!svgElement) return;
-
-  const svgData = exportSvg(svgElement);
-  if (svgData) {
-    downloadFile(svgData, 'lineage-graph.svg', 'image/svg+xml');
-  }
-}
-
-/**
- * Export graph as PNG.
- */
-async function handleExportPng() {
-  const container = document.getElementById('graph-container');
-  const svgElement = container?.querySelector('svg');
-  if (!svgElement) return;
 
   try {
-    const pngDataUrl = await exportPng(svgElement);
-    if (pngDataUrl) {
-      // Convert data URL to blob for download
-      const response = await fetch(pngDataUrl);
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'lineage-graph.png';
-      a.click();
-      URL.revokeObjectURL(url);
+    const lineage = traceMeasureLineage(measureId, state.graph);
+    if (!lineage) {
+      console.warn(`handleMeasureSelect: traceMeasureLineage returned null for ${measureId}`);
+      showLineageMessage(`Could not trace lineage for "${node.name}". The measure may not have any dependencies.`);
+      selectMeasure(measureId);
+      return;
     }
+    renderLineage(lineage, node.name, state.graph);
+    selectMeasure(measureId);
   } catch (err) {
-    console.error('PNG export failed:', err);
-    showError('Failed to export PNG');
+    console.error(`Error tracing lineage for measure ${measureId}:`, err);
+    showLineageMessage(`Failed to trace lineage for "${node.name}": ${err.message}`);
   }
 }
 
-/**
- * Download a file with given content.
- */
-function downloadFile(content, filename, mimeType) {
-  const blob = new Blob([content], { type: mimeType });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
+// --- Visual Selection ---
+
+function handleVisualSelect(visualId) {
+  if (!state.graph) return;
+
+  const node = state.graph.nodes.get(visualId);
+  if (!node || node.type !== 'visual') {
+    console.warn(`handleVisualSelect: node not found or not a visual: ${visualId}`);
+    showLineageMessage(`Visual not found in graph: ${visualId}`);
+    return;
+  }
+
+  try {
+    const lineage = traceVisualLineage(visualId, state.graph);
+    if (!lineage) {
+      showLineageMessage(`Could not trace lineage for this visual.`);
+      selectVisual(visualId);
+      return;
+    }
+    renderVisualLineage(lineage, state.graph);
+    selectVisual(visualId);
+  } catch (err) {
+    console.error(`Error tracing lineage for visual ${visualId}:`, err);
+    showLineageMessage(`Failed to trace lineage for visual: ${err.message}`);
+  }
 }
 
-/**
- * Show an error message to the user.
- */
+function showLineageMessage(message) {
+  const empty = document.getElementById('lineage-empty');
+  const content = document.getElementById('lineage-content');
+  if (content) content.classList.add('hidden');
+  if (empty) {
+    empty.classList.remove('hidden');
+    empty.innerHTML = `<p class="lineage-muted">${message}</p>`;
+  }
+}
+
+// --- Keyboard Shortcuts ---
+
+function handleKeyDown(event) {
+  if (event.key === '/' && !event.ctrlKey && !event.metaKey) {
+    const active = document.activeElement;
+    if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) return;
+    event.preventDefault();
+    const input = document.getElementById('measure-search');
+    if (input) input.focus();
+  }
+}
+
+// --- Utility ---
+
+function showLoadingProgress(message, percent) {
+  const overlay = document.getElementById('loading-overlay');
+  const text = document.getElementById('loading-text');
+  const fill = document.getElementById('loading-bar-fill');
+  if (overlay) overlay.classList.remove('hidden');
+  if (text) text.textContent = message;
+  if (fill) fill.style.width = `${percent}%`;
+}
+
+function hideLoadingOverlay() {
+  const overlay = document.getElementById('loading-overlay');
+  if (overlay) overlay.classList.add('hidden');
+}
+
 function showError(message) {
-  // Use the stats area to show errors briefly
-  const statsEl = document.getElementById('stats');
-  if (statsEl) {
-    const prev = statsEl.textContent;
-    statsEl.textContent = message;
-    statsEl.style.color = '#ff5252';
-    setTimeout(() => {
-      statsEl.textContent = prev;
-      statsEl.style.color = '';
-    }, 5000);
+  const el = document.getElementById('stats');
+  if (el) {
+    const prev = el.textContent;
+    el.textContent = message;
+    el.style.color = '#ff5252';
+    setTimeout(() => { el.textContent = prev; el.style.color = ''; }, 5000);
   }
 }
 
-// Start on DOMContentLoaded
+function showWelcomeError(message) {
+  const el = document.getElementById('welcome-error');
+  if (el) {
+    el.textContent = message;
+    el.classList.remove('hidden');
+  }
+  // Also ensure welcome overlay is visible so user sees the error
+  const overlay = document.getElementById('welcome-overlay');
+  if (overlay) overlay.classList.remove('hidden');
+}
+
+function clearWelcomeError() {
+  const el = document.getElementById('welcome-error');
+  if (el) {
+    el.textContent = '';
+    el.classList.add('hidden');
+  }
+}
+
+// --- Start ---
+
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', init);
 } else {
