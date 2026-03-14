@@ -4,16 +4,15 @@
  * Single-view: measure picker + lineage trace output with D3 tree visualization.
  */
 
-// Parsers
-import { openProjectFolder, loadSelectedReport, loadSemanticModelFolder } from './parser/pbipReader.js';
-import { parseTmdlModel, parseExpressions } from './parser/tmdlParser.js';
-import { parsePbirReport } from './parser/pbirParser.js';
-import { parseDaxExpression } from './parser/daxParser.js';
-import { detectEnrichments, applyEnrichments } from './parser/enrichment.js';
+// Core analysis engine
+import {
+  parseTmdlModel, parseExpressions, parseDaxExpression,
+  parsePbirReport, detectEnrichments, applyEnrichments,
+  buildGraph, computeStats, traceMeasureLineage, traceVisualLineage,
+} from '@pbip-lineage/core';
 
-// Graph
-import { buildGraph, computeStats } from './graph/graphBuilder.js';
-import { traceMeasureLineage, traceVisualLineage } from './graph/lineageTracer.js';
+// Browser-specific file reader
+import { openProjectFolder, loadSelectedReport, loadSemanticModelFolder } from './parser/pbipReader.js';
 
 // UI
 import { initToolbar, updateStats, showLoading, hideLoading } from './ui/toolbar.js';

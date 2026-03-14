@@ -9,8 +9,7 @@
 
 > **No PBIP file?** [Try the live demo with sample data](https://jonathanjihwankim.github.io/pbip-lineage-explorer/) — no setup required.
 
-<!-- TODO: Capture a screenshot of the app with a lineage graph loaded, save as docs/screenshot.png, and uncomment below -->
-<!-- ![PBIP Lineage Explorer Screenshot](docs/screenshot.png) -->
+![PBIP Lineage Explorer Screenshot](docs/screenshot.png)
 
 ---
 

@@ -1,18 +1,26 @@
 /**
- * PBIP Reader - Uses the File System Access API to read PBIP project files.
- * Primary flow: select the PBIP project root folder, auto-discover .Report
- * and .SemanticModel subfolders.
+ * PBIP Reader - Browser-specific file reading using the File System Access API.
+ * Uses @pbip-lineage/core for project structure identification.
  */
 
-const RELEVANT_EXTENSIONS = new Set(['.tmdl', '.json', '.pbir', '.platform']);
+import { identifyProjectStructure, findDefinitionPbir, parseSemanticModelReference, isRelevantFile } from '@pbip-lineage/core';
+
+/**
+ * Check if the File System Access API is available.
+ */
+export function hasFileSystemAccess() {
+  return typeof window !== 'undefined' && !!window.showDirectoryPicker;
+}
 
 /**
  * Open a PBIP project root folder and auto-discover .Report + .SemanticModel subfolders.
+ * Uses File System Access API on supported browsers, falls back to file input on others.
  * @returns {Promise<{reportName: string, reportStructure: object, semanticModelPath: string|null, modelName: string|null, modelStructure: object|null}>}
  */
 export async function openProjectFolder() {
-  if (!window.showDirectoryPicker) {
-    throw new Error('File System Access API is not supported in this browser. Please use a Chromium-based browser.');
+  if (!hasFileSystemAccess()) {
+    // Fallback: use <input webkitdirectory> for Firefox/Safari
+    return openProjectFromFileInput();
   }
 
   const rootHandle = await window.showDirectoryPicker({ mode: 'read' });
@@ -32,8 +40,6 @@ export async function openProjectFolder() {
 
 /**
  * Handle the case where the user selected the project root folder.
- * Scans for .Report and .SemanticModel subfolders.
- * If multiple .Report folders exist, returns them for the UI to show a picker.
  */
 async function handleProjectRoot(rootHandle) {
   const reportEntries = [];
@@ -56,25 +62,18 @@ async function handleProjectRoot(rootHandle) {
     );
   }
 
-  // Multiple reports: return the list for the UI to show a picker
   if (reportEntries.length > 1) {
-    return {
-      multipleReports: reportEntries,
-      modelCandidates,
-    };
+    return { multipleReports: reportEntries, modelCandidates };
   }
 
-  // Single report: load it directly
   return await loadSelectedReport(reportEntries[0].handle, modelCandidates);
 }
 
 /**
  * Handle the case where the user selected a .Report folder directly.
- * Loads report-only mode (no semantic model — browser cannot access sibling folders).
  */
 async function handleDirectReportFolder(reportHandle) {
   const { reportStructure, semanticModelPath } = await readReportFolder(reportHandle);
-
   return {
     reportName: reportHandle.name,
     reportStructure,
@@ -86,7 +85,6 @@ async function handleDirectReportFolder(reportHandle) {
 
 /**
  * Handle the case where the user selected a .SemanticModel folder directly.
- * Cannot proceed without a report, so throws a helpful error.
  */
 async function handleDirectSemanticModelFolder(modelHandle) {
   throw new Error(
@@ -96,10 +94,8 @@ async function handleDirectSemanticModelFolder(modelHandle) {
 
 /**
  * Load a specific report + resolve its linked semantic model.
- * Used after the user picks a report from the multi-report picker, or for single-report auto-load.
- * @param {FileSystemDirectoryHandle} reportHandle - The selected .Report folder handle.
- * @param {Array<{name: string, handle: FileSystemDirectoryHandle}>} modelCandidates - Available .SemanticModel folders.
- * @returns {Promise<{reportName: string, reportStructure: object, semanticModelPath: string|null, modelName: string|null, modelStructure: object|null}>}
+ * @param {FileSystemDirectoryHandle} reportHandle
+ * @param {Array<{name: string, handle: FileSystemDirectoryHandle}>} modelCandidates
  */
 export async function loadSelectedReport(reportHandle, modelCandidates = []) {
   const { reportStructure, semanticModelPath } = await readReportFolder(reportHandle);
@@ -119,7 +115,6 @@ export async function loadSelectedReport(reportHandle, modelCandidates = []) {
 
 /**
  * Open a directory picker to load a semantic model folder.
- * @returns {Promise<{modelName: string, modelStructure: object}|null>} Parsed model, or null if cancelled.
  */
 export async function loadSemanticModelFolder() {
   try {
@@ -173,43 +168,11 @@ async function resolveSemanticModel(modelCandidates, semanticModelPath) {
   return { modelStructure, modelName };
 }
 
-
-/**
- * Find the definition.pbir file in the file map.
- * @param {Map<string, string>} files
- * @returns {string|null} The path to definition.pbir, or null.
- */
-function findDefinitionPbir(files) {
-  for (const [path] of files) {
-    if (path.toLowerCase() === 'definition.pbir' ||
-        path.toLowerCase().endsWith('/definition.pbir')) {
-      return path;
-    }
-  }
-  return null;
-}
-
-/**
- * Parse the semantic model reference from definition.pbir content.
- * @param {string} content - The JSON content of definition.pbir.
- * @returns {string|null} The relative path to the semantic model, or null.
- */
-function parseSemanticModelReference(content) {
-  try {
-    const config = JSON.parse(content);
-    const byPath = config?.datasetReference?.byPath?.path;
-    if (byPath) return byPath;
-    return null;
-  } catch {
-    return null;
-  }
-}
-
 /**
  * Recursively walk a directory handle and collect file contents.
- * @param {FileSystemDirectoryHandle} dirHandle - The directory to walk.
- * @param {string} [basePath=''] - Current path prefix for relative paths.
- * @returns {Promise<Map<string, string>>} Map of relative path -> file content.
+ * @param {FileSystemDirectoryHandle} dirHandle
+ * @param {string} [basePath='']
+ * @returns {Promise<Map<string, string>>}
  */
 export async function walkDirectory(dirHandle, basePath = '') {
   const files = new Map();
@@ -218,15 +181,13 @@ export async function walkDirectory(dirHandle, basePath = '') {
     const relativePath = basePath ? `${basePath}/${name}` : name;
 
     if (handle.kind === 'directory') {
-      // Skip hidden directories and common non-relevant folders
       if (name.startsWith('.') || name === 'node_modules') continue;
       const subFiles = await walkDirectory(handle, relativePath);
       for (const [path, content] of subFiles) {
         files.set(path, content);
       }
     } else if (handle.kind === 'file') {
-      const ext = name.includes('.') ? '.' + name.split('.').pop().toLowerCase() : '';
-      if (RELEVANT_EXTENSIONS.has(ext)) {
+      if (isRelevantFile(name)) {
         try {
           const file = await handle.getFile();
           const content = await file.text();
@@ -241,48 +202,179 @@ export async function walkDirectory(dirHandle, basePath = '') {
   return files;
 }
 
+// --- Cross-browser fallback using <input webkitdirectory> ---
+
 /**
- * Identify the project type and categorize files.
- * @param {Map<string, string>} files - Map of relative paths to contents.
- * @returns {{ tmdlFiles: Array, visualFiles: Array, pageFiles: Array, relationshipFiles: Array, expressionFiles: Array }}
+ * Open project using a hidden <input webkitdirectory> file input.
+ * Works in Firefox, Safari, and all Chromium browsers.
+ * @returns {Promise<object>}
  */
-export function identifyProjectStructure(files) {
-  const tmdlFiles = [];
-  const visualFiles = [];
-  const pageFiles = [];
-  const relationshipFiles = [];
-  const expressionFiles = [];
+function openProjectFromFileInput() {
+  return new Promise((resolve, reject) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.webkitdirectory = true;
+    input.multiple = true;
+    input.style.display = 'none';
 
-  for (const [path, content] of files) {
-    const lowerPath = path.toLowerCase();
+    input.addEventListener('change', async () => {
+      try {
+        if (!input.files || input.files.length === 0) {
+          reject(new DOMException('No folder selected', 'AbortError'));
+          return;
+        }
+        const result = await processFileList(input.files);
+        resolve(result);
+      } catch (err) {
+        reject(err);
+      } finally {
+        input.remove();
+      }
+    });
 
-    if (lowerPath.endsWith('.tmdl')) {
-      // Relationship files are typically named relationships.tmdl or in a relationships folder
-      if (lowerPath.includes('relationship')) {
-        relationshipFiles.push({ path, content });
-      } else if (lowerPath.endsWith('/expressions.tmdl') || lowerPath === 'expressions.tmdl' ||
-                 lowerPath.endsWith('\\expressions.tmdl')) {
-        expressionFiles.push({ path, content });
-      } else {
-        tmdlFiles.push({ path, content });
+    input.addEventListener('cancel', () => {
+      input.remove();
+      reject(new DOMException('User cancelled', 'AbortError'));
+    });
+
+    document.body.appendChild(input);
+    input.click();
+  });
+}
+
+/**
+ * Process a FileList from webkitdirectory input into project structure.
+ * Files have webkitRelativePath like "MyProject/MyProject.Report/definition/pages/..."
+ * @param {FileList} fileList
+ * @returns {Promise<object>}
+ */
+async function processFileList(fileList) {
+  // Read all relevant files into a map keyed by relative path
+  const allFiles = new Map();
+  const rootParts = new Set();
+
+  for (const file of fileList) {
+    const relPath = file.webkitRelativePath;
+    if (!relPath) continue;
+
+    // Track the root folder name
+    const parts = relPath.split('/');
+    if (parts.length > 0) rootParts.add(parts[0]);
+
+    // Only read relevant extensions
+    const fileName = parts[parts.length - 1];
+    if (isRelevantFile(fileName)) {
+      try {
+        const content = await file.text();
+        allFiles.set(relPath, content);
+      } catch (err) {
+        console.warn(`Failed to read file: ${relPath}`, err);
       }
-    } else if (lowerPath.endsWith('.json')) {
-      // Visual config files are typically under report/*/visuals/*/visual.json
-      if (lowerPath.includes('/visuals/') && lowerPath.endsWith('visual.json')) {
-        visualFiles.push({ path, content });
-      }
-      // Page files: page.json inside report page folders
-      else if (lowerPath.endsWith('/page.json') || (lowerPath.includes('/pages/') && lowerPath.endsWith('.json'))) {
-        pageFiles.push({ path, content });
-      }
-      // Also check for report.json or definition files that describe pages
-      else if (lowerPath.endsWith('/report.json') || lowerPath.endsWith('/definition.pbir')) {
-        pageFiles.push({ path, content });
-      }
-    } else if (lowerPath.endsWith('.pbir')) {
-      pageFiles.push({ path, content });
     }
   }
 
-  return { tmdlFiles, visualFiles, pageFiles, relationshipFiles, expressionFiles };
+  // Find .Report and .SemanticModel folders
+  const reportFolders = [];
+  const modelFolders = [];
+
+  // Get all unique second-level folder names
+  const secondLevel = new Set();
+  for (const [path] of allFiles) {
+    const parts = path.split('/');
+    if (parts.length >= 2) secondLevel.add(parts[1]);
+  }
+
+  // Also check the root folder itself
+  const rootName = [...rootParts][0] || '';
+
+  for (const folderName of secondLevel) {
+    const lower = folderName.toLowerCase();
+    if (lower.endsWith('.report')) reportFolders.push(folderName);
+    else if (lower.endsWith('.semanticmodel')) modelFolders.push(folderName);
+  }
+
+  // Also check if root is itself a .Report or .SemanticModel
+  if (rootName.toLowerCase().endsWith('.report')) {
+    return processAsReport(rootName, allFiles, rootName);
+  }
+  if (rootName.toLowerCase().endsWith('.semanticmodel')) {
+    throw new Error('Please select the folder that contains your .Report and .SemanticModel folders.');
+  }
+
+  if (reportFolders.length === 0) {
+    throw new Error(
+      'No .Report folder found in the selected directory.\n' +
+      'Please select the folder that contains your .Report and .SemanticModel subfolders.'
+    );
+  }
+
+  // For now, use the first report and first model (multi-report picker could be added later)
+  const reportFolder = reportFolders[0];
+  const modelFolder = modelFolders[0] || null;
+
+  // Extract report files (strip the root/reportFolder prefix)
+  const reportPrefix = `${rootName}/${reportFolder}/`;
+  const reportFiles = new Map();
+  for (const [path, content] of allFiles) {
+    if (path.startsWith(reportPrefix)) {
+      reportFiles.set(path.slice(reportPrefix.length), content);
+    }
+  }
+  const reportStructure = identifyProjectStructure(reportFiles);
+
+  // Find semantic model reference
+  const pbirPath = findDefinitionPbir(reportFiles);
+  let semanticModelPath = null;
+  if (pbirPath) {
+    semanticModelPath = parseSemanticModelReference(reportFiles.get(pbirPath));
+  }
+
+  // Extract model files
+  let modelStructure = null;
+  let modelName = null;
+  if (modelFolder) {
+    const modelPrefix = `${rootName}/${modelFolder}/`;
+    const modelFiles = new Map();
+    for (const [path, content] of allFiles) {
+      if (path.startsWith(modelPrefix)) {
+        modelFiles.set(path.slice(modelPrefix.length), content);
+      }
+    }
+    modelStructure = identifyProjectStructure(modelFiles);
+    modelName = modelFolder;
+  }
+
+  return {
+    reportName: reportFolder,
+    reportStructure,
+    semanticModelPath,
+    modelName,
+    modelStructure,
+  };
+}
+
+/**
+ * Process files when the root folder is itself a .Report folder.
+ */
+function processAsReport(reportName, allFiles, rootName) {
+  const prefix = `${rootName}/`;
+  const reportFiles = new Map();
+  for (const [path, content] of allFiles) {
+    if (path.startsWith(prefix)) {
+      reportFiles.set(path.slice(prefix.length), content);
+    }
+  }
+  const reportStructure = identifyProjectStructure(reportFiles);
+  const pbirPath = findDefinitionPbir(reportFiles);
+  let semanticModelPath = null;
+  if (pbirPath) {
+    semanticModelPath = parseSemanticModelReference(reportFiles.get(pbirPath));
+  }
+  return {
+    reportName,
+    reportStructure,
+    semanticModelPath,
+    modelName: null,
+    modelStructure: null,
+  };
 }

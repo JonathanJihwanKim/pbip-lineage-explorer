@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <rect width="128" height="128" rx="16" fill="#1a3a5c"/>
+  <g stroke-width="2.5" fill="none" stroke-linecap="round">
+    <!-- Lineage lines -->
+    <line x1="32" y1="40" x2="64" y2="64" stroke="#4caf50" opacity="0.8"/>
+    <line x1="32" y1="88" x2="64" y2="64" stroke="#4caf50" opacity="0.8"/>
+    <line x1="64" y1="64" x2="96" y2="48" stroke="#ff9800" opacity="0.8"/>
+    <line x1="64" y1="64" x2="96" y2="80" stroke="#9c27b0" opacity="0.8"/>
+    <!-- Nodes -->
+    <circle cx="32" cy="40" r="8" fill="#4caf50"/>
+    <circle cx="32" cy="88" r="8" fill="#4caf50"/>
+    <circle cx="64" cy="64" r="10" fill="#ff9800"/>
+    <circle cx="96" cy="48" r="7" fill="#9c27b0"/>
+    <circle cx="96" cy="80" r="7" fill="#607d8b"/>
+  </g>
+  <text x="64" y="118" text-anchor="middle" fill="white" font-family="system-ui" font-size="11" font-weight="600">PBIP</text>
+</svg>

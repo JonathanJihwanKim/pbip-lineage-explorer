@@ -1,0 +1,35 @@
+{
+  "name": "@pbip-lineage/core",
+  "version": "1.0.0",
+  "description": "Core lineage analysis engine for Power BI PBIP projects — parse TMDL/PBIR, build dependency graphs, trace DAX lineage",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./parser/*": "./src/parser/*",
+    "./graph/*": "./src/graph/*",
+    "./utils/*": "./src/utils/*"
+  },
+  "files": [
+    "src/"
+  ],
+  "keywords": [
+    "power-bi",
+    "pbip",
+    "lineage",
+    "pbir",
+    "tmdl",
+    "dax",
+    "data-lineage",
+    "impact-analysis",
+    "semantic-model"
+  ],
+  "license": "MIT",
+  "author": "Jihwan Kim",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/JonathanJihwanKim/pbip-lineage-explorer",
+    "directory": "packages/core"
+  },
+  "homepage": "https://github.com/JonathanJihwanKim/pbip-lineage-explorer#readme"
+}

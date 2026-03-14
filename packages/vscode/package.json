@@ -1,0 +1,110 @@
+{
+  "name": "pbip-lineage-explorer",
+  "displayName": "PBIP Lineage Explorer",
+  "description": "Trace DAX measure lineage from visuals to source columns in Power BI PBIP projects",
+  "version": "1.0.0",
+  "publisher": "JonathanJihwanKim",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/JonathanJihwanKim/pbip-lineage-explorer"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Visualization",
+    "Other"
+  ],
+  "keywords": [
+    "power-bi",
+    "pbip",
+    "lineage",
+    "tmdl",
+    "dax",
+    "data-lineage",
+    "pbir",
+    "semantic-model"
+  ],
+  "activationEvents": [
+    "workspaceContains:**/*.tmdl"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "pbipLineage.traceMeasure",
+        "title": "PBIP: Trace Measure Lineage",
+        "icon": "$(graph)"
+      },
+      {
+        "command": "pbipLineage.findOrphans",
+        "title": "PBIP: Find Orphan Measures",
+        "icon": "$(warning)"
+      },
+      {
+        "command": "pbipLineage.showModelHealth",
+        "title": "PBIP: Show Model Health",
+        "icon": "$(pulse)"
+      },
+      {
+        "command": "pbipLineage.refresh",
+        "title": "PBIP: Refresh Lineage",
+        "icon": "$(refresh)"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "pbip-lineage",
+          "title": "PBIP Lineage",
+          "icon": "$(graph-line)"
+        }
+      ]
+    },
+    "views": {
+      "pbip-lineage": [
+        {
+          "id": "pbipLineage.measures",
+          "name": "Measures",
+          "icon": "$(symbol-method)"
+        },
+        {
+          "id": "pbipLineage.orphans",
+          "name": "Orphan Measures",
+          "icon": "$(warning)"
+        },
+        {
+          "id": "pbipLineage.stats",
+          "name": "Model Stats",
+          "icon": "$(pulse)"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "pbipLineage.measures",
+        "contents": "No PBIP project found in this workspace.\n\nOpen a folder containing .tmdl files to get started.\n\n[Open Folder](command:vscode.openFolder)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "pbipLineage.refresh",
+          "when": "view == pbipLineage.measures",
+          "group": "navigation"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "watch": "node build.mjs --watch",
+    "package": "npx @vscode/vsce package --no-dependencies"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.0.0",
+    "esbuild": "^0.24.0"
+  }
+}

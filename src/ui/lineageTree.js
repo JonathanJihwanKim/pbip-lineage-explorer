@@ -5,7 +5,7 @@
  */
 
 import * as d3 from 'd3';
-import { LAYER_COLORS, LAYER_LABELS } from '../utils/constants.js';
+import { LAYER_COLORS, LAYER_LABELS } from '@pbip-lineage/core/utils/constants.js';
 
 const NODE_WIDTH = 200;
 const NODE_HEIGHT = 36;
