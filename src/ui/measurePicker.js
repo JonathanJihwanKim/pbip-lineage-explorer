@@ -1,6 +1,7 @@
 /**
  * Measure Picker - Left sidebar for the Lineage Trace view.
  * Displays a searchable, grouped list of all measures.
+ * Supports: search count, orphan filter, DAX expression search.
  */
 
 /**
@@ -13,15 +14,20 @@ export function initMeasurePicker(callbacks = {}) {
     let debounce = null;
     searchInput.addEventListener('input', () => {
       clearTimeout(debounce);
-      debounce = setTimeout(() => filterMeasures(searchInput.value), 200);
+      debounce = setTimeout(() => applyFilters(), 200);
     });
+  }
+
+  const orphanFilter = document.getElementById('orphan-filter');
+  if (orphanFilter) {
+    orphanFilter.addEventListener('change', () => applyFilters());
   }
 
   _callbacks = callbacks;
 }
 
 let _callbacks = {};
-let _measures = []; // { id, name, table }
+let _measures = []; // { id, name, table, expression, isOrphan }
 let _graph = null;
 
 /**
@@ -32,12 +38,17 @@ export function populateMeasures(graph) {
   _graph = graph;
   _measures = [];
 
+  const downstream = graph.adjacency?.downstream || new Map();
+
   for (const node of graph.nodes.values()) {
     if (node.type === 'measure') {
+      const isOrphan = !downstream.has(node.id) || downstream.get(node.id).length === 0;
       _measures.push({
         id: node.id,
         name: node.name,
         table: node.metadata?.table || '',
+        expression: node.metadata?.expression || '',
+        isOrphan,
       });
     }
   }
@@ -57,16 +68,37 @@ function updateCount() {
   if (badge) badge.textContent = _measures.length;
 }
 
-function filterMeasures(query) {
-  const q = query.toLowerCase().trim();
-  if (!q) {
-    renderList(_measures);
-    return;
+function applyFilters() {
+  const searchInput = document.getElementById('measure-search');
+  const orphanFilter = document.getElementById('orphan-filter');
+  const q = (searchInput?.value || '').toLowerCase().trim();
+  const orphanOnly = orphanFilter?.checked || false;
+
+  let filtered = _measures;
+
+  if (orphanOnly) {
+    filtered = filtered.filter(m => m.isOrphan);
   }
 
-  const filtered = _measures.filter(m =>
-    m.name.toLowerCase().includes(q) || m.table.toLowerCase().includes(q)
-  );
+  if (q) {
+    filtered = filtered.filter(m =>
+      m.name.toLowerCase().includes(q) ||
+      m.table.toLowerCase().includes(q) ||
+      m.expression.toLowerCase().includes(q)
+    );
+  }
+
+  // Update search info
+  const info = document.getElementById('measure-search-info');
+  if (info) {
+    if (q || orphanOnly) {
+      info.classList.remove('hidden');
+      info.textContent = `${filtered.length} of ${_measures.length} measures`;
+    } else {
+      info.classList.add('hidden');
+    }
+  }
+
   renderList(filtered);
 }
 
@@ -93,7 +125,8 @@ function renderList(measures) {
     html += `<summary class="measure-group-header">${escapeHtml(table)} <span class="measure-group-count">(${items.length})</span></summary>`;
     html += `<div class="measure-group-items">`;
     for (const m of items) {
-      html += `<div class="measure-item" data-id="${escapeHtml(m.id)}">${escapeHtml(m.name)}</div>`;
+      const orphanBadge = m.isOrphan ? ' <span style="font-size:9px;color:var(--text-muted);opacity:0.6" title="Not used by any visual">orphan</span>' : '';
+      html += `<div class="measure-item" data-id="${escapeHtml(m.id)}">${escapeHtml(m.name)}${orphanBadge}</div>`;
     }
     html += `</div></details>`;
   }

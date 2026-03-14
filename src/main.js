@@ -20,12 +20,15 @@ import { initToolbar, updateStats, showLoading, hideLoading } from './ui/toolbar
 import { initMeasurePicker, populateMeasures, selectMeasure } from './ui/measurePicker.js';
 import { initVisualBrowser, populateVisuals, selectVisual } from './ui/visualBrowser.js';
 import { initLineageView, renderLineage, renderVisualLineage, clearLineage } from './ui/lineageView.js';
+import { populateSourceMapping, renderSourceMapping } from './ui/sourceMapping.js';
 
 const state = {
   graph: null,
   reportStructure: null,
   reportName: null,
   semanticModelPath: null,
+  sourceMapVisible: false,
+  measureSelectCount: 0,
 };
 
 // --- Initialization ---
@@ -38,6 +41,14 @@ function init() {
 
   const btnLoadModel = document.getElementById('btn-load-model');
   if (btnLoadModel) btnLoadModel.addEventListener('click', handleLoadSemanticModel);
+
+  // Source Map toggle
+  const btnSourceMap = document.getElementById('btn-source-map');
+  if (btnSourceMap) btnSourceMap.addEventListener('click', toggleSourceMap);
+
+  // Toast close
+  const toastClose = document.getElementById('toast-close');
+  if (toastClose) toastClose.addEventListener('click', hideToast);
 
   // Sidebar tab switching
   document.querySelectorAll('.sidebar-tab').forEach(tab => {
@@ -52,6 +63,51 @@ function init() {
   });
 
   document.addEventListener('keydown', handleKeyDown);
+}
+
+// --- Source Map Toggle ---
+
+function toggleSourceMap() {
+  state.sourceMapVisible = !state.sourceMapVisible;
+  const btn = document.getElementById('btn-source-map');
+  const lineageEmpty = document.getElementById('lineage-empty');
+  const lineageContent = document.getElementById('lineage-content');
+  const sourceMapContainer = document.getElementById('source-map-container');
+
+  if (state.sourceMapVisible) {
+    if (btn) btn.classList.add('active');
+    if (lineageEmpty) lineageEmpty.classList.add('hidden');
+    if (lineageContent) lineageContent.classList.add('hidden');
+    if (sourceMapContainer) {
+      sourceMapContainer.classList.remove('hidden');
+      renderSourceMapping(sourceMapContainer);
+    }
+  } else {
+    if (btn) btn.classList.remove('active');
+    if (sourceMapContainer) sourceMapContainer.classList.add('hidden');
+    // Restore previous lineage view
+    if (lineageContent && lineageContent.innerHTML.trim()) {
+      lineageContent.classList.remove('hidden');
+    } else {
+      if (lineageEmpty) lineageEmpty.classList.remove('hidden');
+    }
+  }
+}
+
+// --- Toast ---
+
+function showSponsorToast() {
+  if (sessionStorage.getItem('pbip-toast-shown')) return;
+  const toast = document.getElementById('sponsor-toast');
+  if (toast) {
+    toast.classList.remove('hidden');
+    sessionStorage.setItem('pbip-toast-shown', '1');
+  }
+}
+
+function hideToast() {
+  const toast = document.getElementById('sponsor-toast');
+  if (toast) toast.classList.add('hidden');
 }
 
 // --- Data Loading ---
@@ -185,6 +241,15 @@ async function loadProjectResult(projectResult) {
 
   populateMeasures(graph);
   populateVisuals(graph);
+  populateSourceMapping(graph);
+
+  // Show Source Map button
+  const btnSourceMap = document.getElementById('btn-source-map');
+  if (btnSourceMap) btnSourceMap.classList.remove('hidden');
+
+  // Show orphan filter
+  const filterRow = document.getElementById('measure-filter-row');
+  if (filterRow) filterRow.classList.remove('hidden');
 
   // Hide overlays
   const overlay = document.getElementById('welcome-overlay');
@@ -276,6 +341,7 @@ async function handleLoadSemanticModel() {
 
     populateMeasures(graph);
     populateVisuals(graph);
+    populateSourceMapping(graph);
 
     // Hide the model banner
     const banner = document.getElementById('model-banner');
@@ -295,6 +361,15 @@ async function handleLoadSemanticModel() {
 function handleMeasureSelect(measureId) {
   if (!state.graph) return;
 
+  // Exit source map view if active
+  if (state.sourceMapVisible) {
+    state.sourceMapVisible = false;
+    const btn = document.getElementById('btn-source-map');
+    if (btn) btn.classList.remove('active');
+    const sourceMapContainer = document.getElementById('source-map-container');
+    if (sourceMapContainer) sourceMapContainer.classList.add('hidden');
+  }
+
   const node = state.graph.nodes.get(measureId);
   if (!node || node.type !== 'measure') {
     console.warn(`handleMeasureSelect: node not found or not a measure: ${measureId}`);
@@ -312,6 +387,12 @@ function handleMeasureSelect(measureId) {
     }
     renderLineage(lineage, node.name, state.graph);
     selectMeasure(measureId);
+
+    // Sponsor toast after 10th measure selection
+    state.measureSelectCount++;
+    if (state.measureSelectCount === 10) {
+      showSponsorToast();
+    }
   } catch (err) {
     console.error(`Error tracing lineage for measure ${measureId}:`, err);
     showLineageMessage(`Failed to trace lineage for "${node.name}": ${err.message}`);
@@ -322,6 +403,15 @@ function handleMeasureSelect(measureId) {
 
 function handleVisualSelect(visualId) {
   if (!state.graph) return;
+
+  // Exit source map view if active
+  if (state.sourceMapVisible) {
+    state.sourceMapVisible = false;
+    const btn = document.getElementById('btn-source-map');
+    if (btn) btn.classList.remove('active');
+    const sourceMapContainer = document.getElementById('source-map-container');
+    if (sourceMapContainer) sourceMapContainer.classList.add('hidden');
+  }
 
   const node = state.graph.nodes.get(visualId);
   if (!node || node.type !== 'visual') {
@@ -364,6 +454,11 @@ function handleKeyDown(event) {
     event.preventDefault();
     const input = document.getElementById('measure-search');
     if (input) input.focus();
+  }
+
+  // Escape to close source map view
+  if (event.key === 'Escape' && state.sourceMapVisible) {
+    toggleSourceMap();
   }
 }
 

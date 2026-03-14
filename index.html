@@ -3,7 +3,22 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>PBIP Lineage Explorer</title>
+  <title>PBIP Lineage Explorer — Trace DAX Measure Lineage in Power BI</title>
+  <meta name="description" content="Trace DAX measure lineage from visuals to source columns in Power BI PBIP projects — instantly, in your browser. Free, open-source, 100% client-side." />
+  <meta name="keywords" content="Power BI, PBIP, lineage, DAX, TMDL, PBIR, data lineage, semantic model, impact analysis, column mapping" />
+  <meta name="author" content="Jihwan Kim" />
+
+  <!-- Open Graph -->
+  <meta property="og:title" content="PBIP Lineage Explorer — Trace DAX Lineage Instantly" />
+  <meta property="og:description" content="Trace DAX measure lineage from visuals to source columns in Power BI PBIP projects. Free, open-source, 100% client-side." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://jonathanjihwankim.github.io/pbip-lineage-explorer/" />
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="PBIP Lineage Explorer — Trace DAX Lineage Instantly" />
+  <meta name="twitter:description" content="Trace DAX measure lineage from visuals to source columns in Power BI PBIP projects. Free, open-source, 100% client-side." />
+
   <link rel="stylesheet" href="/styles/main.css" />
 </head>
 <body>
@@ -18,7 +33,15 @@
     <div class="toolbar-center">
       <span class="app-title">PBIP Lineage Explorer</span>
     </div>
-    <div class="toolbar-right"></div>
+    <div class="toolbar-right">
+      <button id="btn-source-map" class="toolbar-btn-source-map hidden" title="View Source Column Mapping">
+        <span class="icon">&#128203;</span> Source Map
+      </button>
+      <a href="https://github.com/sponsors/JonathanJihwanKim" target="_blank" rel="noopener" class="toolbar-sponsor" title="Support this project">
+        <span class="sponsor-heart">&#9829;</span>
+        <span class="sponsor-text">Sponsor</span>
+      </a>
+    </div>
   </header>
 
   <!-- Model banner (shown when report loaded without semantic model) -->
@@ -44,6 +67,12 @@
       <div class="tab-panel" id="tab-measures">
         <div class="search-group">
           <input type="text" id="measure-search" placeholder="Search measures..." autocomplete="off" />
+          <div id="measure-search-info" class="search-info hidden"></div>
+        </div>
+        <div class="measure-filter-row hidden" id="measure-filter-row">
+          <label class="filter-toggle">
+            <input type="checkbox" id="orphan-filter" /> <span>Orphans only</span>
+          </label>
         </div>
         <div id="measure-list" class="measure-list"></div>
       </div>
@@ -57,27 +86,87 @@
       </div>
     </aside>
 
-    <!-- Right: Lineage results -->
+    <!-- Right: Lineage results / Source Map -->
     <main id="lineage-results" class="lineage-results">
       <div id="lineage-empty" class="lineage-empty">
-        <p>Select a measure from the left panel to trace its full lineage.</p>
+        <div class="empty-state">
+          <div class="empty-state-icon">
+            <svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="12" cy="24" r="4" stroke="currentColor" stroke-width="2" fill="none"/>
+              <circle cx="36" cy="12" r="4" stroke="currentColor" stroke-width="2" fill="none"/>
+              <circle cx="36" cy="36" r="4" stroke="currentColor" stroke-width="2" fill="none"/>
+              <line x1="16" y1="22" x2="32" y2="13" stroke="currentColor" stroke-width="1.5"/>
+              <line x1="16" y1="26" x2="32" y2="35" stroke="currentColor" stroke-width="1.5"/>
+            </svg>
+          </div>
+          <p class="empty-state-title">Select a measure or visual</p>
+          <p class="empty-state-hint">Choose from the left panel to trace its full lineage from visuals to source columns.</p>
+        </div>
       </div>
       <div id="lineage-content" class="lineage-content hidden">
         <h2 id="lineage-title" class="lineage-title"></h2>
         <div id="lineage-tree-container" class="lineage-tree-container"></div>
         <div id="lineage-sections"></div>
       </div>
+      <div id="source-map-container" class="source-map-container hidden"></div>
     </main>
   </div>
 
   <!-- Welcome overlay -->
   <div id="welcome-overlay" class="overlay">
-    <div class="overlay-card">
+    <div class="overlay-card welcome-card">
       <h1>PBIP Lineage Explorer</h1>
-      <p>Trace DAX measure lineage in your Power BI PBIP projects.</p>
+      <p class="welcome-tagline">Trace DAX measure lineage from visuals to source columns — instantly, in your browser.</p>
+
+      <div class="welcome-features">
+        <div class="welcome-feature">
+          <span class="welcome-feature-icon">&#128279;</span>
+          <div>
+            <strong>Cross-folder lineage</strong>
+            <span>TMDL models + PBIR visuals</span>
+          </div>
+        </div>
+        <div class="welcome-feature">
+          <span class="welcome-feature-icon">&#128269;</span>
+          <div>
+            <strong>Source column mapping</strong>
+            <span>Track renames back to origin</span>
+          </div>
+        </div>
+        <div class="welcome-feature">
+          <span class="welcome-feature-icon">&#9889;</span>
+          <div>
+            <strong>Impact analysis</strong>
+            <span>What breaks if I change this?</span>
+          </div>
+        </div>
+        <div class="welcome-feature">
+          <span class="welcome-feature-icon">&#128274;</span>
+          <div>
+            <strong>100% client-side</strong>
+            <span>Files never leave your browser</span>
+          </div>
+        </div>
+      </div>
+
       <p class="overlay-instruction">Select the folder that contains your <code>.Report</code> and <code>.SemanticModel</code> folders</p>
       <div id="welcome-error" class="welcome-error hidden"></div>
-      <button id="btn-get-started" class="btn-primary">Open Project Folder</button>
+
+      <div class="overlay-actions">
+        <button id="btn-get-started" class="btn-primary">Open Project Folder</button>
+      </div>
+
+      <div class="welcome-sponsor">
+        <p>Built and maintained by <strong>Jihwan Kim</strong> (Microsoft MVP)</p>
+        <div class="welcome-sponsor-buttons">
+          <a href="https://github.com/sponsors/JonathanJihwanKim" target="_blank" rel="noopener" class="sponsor-pill sponsor-pill-github">
+            <span>&#9829;</span> GitHub Sponsors
+          </a>
+          <a href="https://buymeacoffee.com/jihwankim" target="_blank" rel="noopener" class="sponsor-pill sponsor-pill-coffee">
+            <span>&#9749;</span> Buy Me a Coffee
+          </a>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -97,6 +186,15 @@
       <div class="loading-bar">
         <div class="loading-bar-fill" id="loading-bar-fill" style="width: 0%"></div>
       </div>
+    </div>
+  </div>
+
+  <!-- Toast notification -->
+  <div id="sponsor-toast" class="toast-notification hidden">
+    <div class="toast-content">
+      <span class="toast-icon">&#9829;</span>
+      <span class="toast-message">Enjoying PBIP Lineage Explorer? <a href="https://github.com/sponsors/JonathanJihwanKim" target="_blank" rel="noopener">Support development</a></span>
+      <button class="toast-close" id="toast-close">&#10005;</button>
     </div>
   </div>
 

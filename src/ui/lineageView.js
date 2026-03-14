@@ -49,7 +49,7 @@ export function renderLineage(lineage, measureName, graph) {
   if (sectionsContainer) {
     let html = '';
     html += renderVisualsSection(lineage.visuals);
-    html += renderMeasureChainSection(lineage.measureChain);
+    html += renderMeasureChainSection(lineage.measureChain, lineage.summaryTrees);
     html += renderSourceTableSection(lineage.sourceTable);
     html += renderSummarySection(lineage.summaryTrees, lineage.measureChain, lineage.sourceTable);
     sectionsContainer.innerHTML = html;
@@ -131,7 +131,7 @@ export function renderVisualLineage(visualLineage, graph) {
       // Single direct measure (no FP): show DAX chain + source lineage directly
       const m = allMeasures[0];
       if (m.lineage) {
-        html += renderMeasureChainSection(m.lineage.measureChain);
+        html += renderMeasureChainSection(m.lineage.measureChain, m.lineage.summaryTrees);
         html += renderSourceTableSection(m.lineage.sourceTable);
         html += renderVisualSummarySection(visual, m.lineage.measureChain, m.lineage.sourceTable);
       }
@@ -149,7 +149,7 @@ export function renderVisualLineage(visualLineage, graph) {
         html += `</summary>`;
         html += `<div class="measure-accordion-body">`;
         if (m.lineage) {
-          html += renderMeasureChainSection(m.lineage.measureChain);
+          html += renderMeasureChainSection(m.lineage.measureChain, m.lineage.summaryTrees);
           html += renderSourceTableSection(m.lineage.sourceTable);
           html += renderVisualSummarySection(visual, m.lineage.measureChain, m.lineage.sourceTable);
         }
@@ -218,9 +218,15 @@ function renderVisualsSection(visuals) {
 
 // --- Section 2: DAX Measure Chain ---
 
-function renderMeasureChainSection(chain) {
+function renderMeasureChainSection(chain, summaryTrees) {
   let html = '<div class="lineage-section">';
-  html += '<h3>2. DAX Measure Chain</h3>';
+  html += '<h3>2. DAX Measure Chain';
+  // Copy lineage button
+  if (summaryTrees && summaryTrees.length > 0) {
+    const copyText = esc(summaryTrees.join('\n\n'));
+    html += ` <button class="btn-copy-lineage" data-lineage-text="${copyText}" title="Copy lineage as text">Copy</button>`;
+  }
+  html += '</h3>';
   html += '<div class="measure-tree">';
   html += renderChainNode(chain, 0);
   html += '</div></div>';
@@ -244,16 +250,16 @@ function renderChainNode(chain, depth) {
   html += `</div>`;
 
   if (chain.expression) {
-    // Full DAX in collapsible details
+    // Full DAX with syntax highlighting in collapsible details
     const firstLine = chain.expression.split('\n')[0];
     const isLong = chain.expression.length > 100 || chain.expression.includes('\n');
     if (isLong) {
       html += `<details class="chain-dax-details">`;
-      html += `<summary class="chain-dax-summary">${esc(firstLine.substring(0, 100))}${firstLine.length > 100 ? '...' : ''}</summary>`;
-      html += `<div class="chain-dax">${esc(chain.expression)}</div>`;
+      html += `<summary class="chain-dax-summary">${highlightDax(firstLine.substring(0, 100))}${firstLine.length > 100 ? '...' : ''}</summary>`;
+      html += `<div class="chain-dax">${highlightDax(chain.expression)}</div>`;
       html += `</details>`;
     } else {
-      html += `<div class="chain-dax">${esc(chain.expression)}</div>`;
+      html += `<div class="chain-dax">${highlightDax(chain.expression)}</div>`;
     }
   }
 
@@ -271,6 +277,10 @@ function renderChainNode(chain, depth) {
         }
       }
       html += `</div>`;
+      // Source column info for data engineers
+      if (col.originalSourceColumn && col.originalSourceColumn !== col.name) {
+        html += `<div class="chain-source-info">Source: ${esc(col.bigQueryTable ? `${col.bigQueryTable}.${col.originalSourceColumn}` : col.originalSourceColumn)}</div>`;
+      }
     }
     html += `</div>`;
   }
@@ -457,6 +467,82 @@ function renderSummaryChainNode(chain, depth, colSourceMap) {
   return html;
 }
 
+// --- DAX Syntax Highlighting ---
+
+/** DAX functions to highlight */
+const DAX_FUNCTIONS = new Set([
+  'CALCULATE', 'CALCULATETABLE', 'FILTER', 'ALL', 'ALLEXCEPT', 'ALLSELECTED',
+  'SUM', 'SUMX', 'AVERAGE', 'AVERAGEX', 'COUNT', 'COUNTX', 'COUNTA', 'COUNTAX',
+  'COUNTROWS', 'COUNTBLANK', 'MIN', 'MINX', 'MAX', 'MAXX',
+  'DIVIDE', 'IF', 'SWITCH', 'SELECTEDVALUE', 'HASONEVALUE',
+  'RELATED', 'RELATEDTABLE', 'USERELATIONSHIP', 'CROSSFILTER',
+  'VALUES', 'DISTINCT', 'DISTINCTCOUNT', 'DISTINCTCOUNTNOBLANK',
+  'EARLIER', 'EARLIEST', 'LOOKUPVALUE', 'TREATAS',
+  'RANKX', 'TOPN', 'GENERATE', 'GENERATEALL', 'ADDCOLUMNS', 'SELECTCOLUMNS',
+  'SUMMARIZE', 'SUMMARIZECOLUMNS', 'GROUPBY',
+  'ISBLANK', 'ISEMPTY', 'ISERROR', 'ISINSCOPE',
+  'FORMAT', 'CONCATENATE', 'CONCATENATEX', 'COMBINEVALUES',
+  'DATE', 'YEAR', 'MONTH', 'DAY', 'TODAY', 'NOW', 'DATEDIFF', 'DATEADD',
+  'TOTALYTD', 'TOTALQTD', 'TOTALMTD', 'SAMEPERIODLASTYEAR', 'DATESBETWEEN',
+  'PREVIOUSYEAR', 'PREVIOUSQUARTER', 'PREVIOUSMONTH', 'PREVIOUSDAY',
+  'NEXTYEAR', 'NEXTQUARTER', 'NEXTMONTH', 'NEXTDAY',
+  'PARALLELPERIOD', 'OPENINGBALANCEYEAR', 'CLOSINGBALANCEYEAR',
+  'VAR', 'RETURN', 'TRUE', 'FALSE', 'BLANK', 'NOT', 'AND', 'OR', 'IN',
+  'UNION', 'INTERSECT', 'EXCEPT', 'NATURALINNERJOIN', 'NATURALLEFTOUTERJOIN',
+  'ROW', 'DATATABLE', 'ERROR', 'USERCULTURE', 'USERNAME',
+  'KEEPFILTERS', 'REMOVEFILTERS', 'ALLNOBLANKROW',
+  'NAMEOF', 'SELECTEDVALUE', 'ISSELECTEDMEASURE', 'SELECTEDMEASURE',
+  'CALCULATIONGROUP', 'CONTAINS', 'CONTAINSROW',
+  'FIRSTDATE', 'LASTDATE', 'FIRSTNONBLANK', 'LASTNONBLANK',
+  'POWER', 'SQRT', 'ABS', 'ROUND', 'ROUNDUP', 'ROUNDDOWN', 'INT', 'MOD',
+  'CALENDAR', 'CALENDARAUTO', 'EOMONTH', 'EDATE',
+  'CONVERT', 'CURRENCY', 'FIXED', 'LEFT', 'RIGHT', 'MID', 'LEN',
+  'UPPER', 'LOWER', 'TRIM', 'SUBSTITUTE', 'REPLACE', 'SEARCH', 'FIND',
+  'PATHCONTAINS', 'PATHITEM', 'PATHITEMREVERSE', 'PATHLENGTH',
+  'PRODUCTX', 'GEOMEANX', 'MEDIANX', 'PERCENTILEX',
+  'STDEV', 'STDEVX', 'VAR', 'VARX',
+]);
+
+/**
+ * Apply basic DAX syntax highlighting.
+ * Returns HTML with span classes for coloring.
+ */
+function highlightDax(expression) {
+  if (!expression) return '';
+
+  // First escape HTML
+  let text = esc(expression);
+
+  // Replace comments (// line comments)
+  text = text.replace(/(\/\/[^\n]*)/g, '<span class="dax-comment">$1</span>');
+
+  // Replace block comments
+  text = text.replace(/(\/\*[\s\S]*?\*\/)/g, '<span class="dax-comment">$1</span>');
+
+  // Replace string literals
+  text = text.replace(/(&quot;[^&]*?&quot;)/g, '<span class="dax-str">$1</span>');
+
+  // Replace table references 'TableName'
+  text = text.replace(/(&apos;|&#39;|')?([A-Za-z_][\w\s]*?)(&apos;|&#39;|')(?=\[)/g,
+    '<span class="dax-table-ref">$1$2$3</span>');
+
+  // Replace column/measure references [Name]
+  text = text.replace(/\[([^\]]+)\]/g, '<span class="dax-col-ref">[$1]</span>');
+
+  // Replace numbers
+  text = text.replace(/\b(\d+\.?\d*)\b/g, '<span class="dax-number">$1</span>');
+
+  // Replace DAX function names (word boundary + known function + opening paren)
+  text = text.replace(/\b([A-Z][A-Z0-9_.]*)\s*(?=\()/g, (match, fn) => {
+    if (DAX_FUNCTIONS.has(fn.toUpperCase())) {
+      return `<span class="dax-fn">${fn}</span>`;
+    }
+    return match;
+  });
+
+  return text;
+}
+
 // --- Helpers ---
 
 function bindClickHandlers(container) {
@@ -488,6 +574,24 @@ function bindClickHandlers(container) {
           btn.innerHTML = '&#10003;';
           btn.style.color = '#4caf50';
           setTimeout(() => { btn.innerHTML = orig; btn.style.color = ''; }, 1500);
+        }).catch(() => {});
+      }
+    });
+  });
+
+  // Copy lineage buttons
+  container.querySelectorAll('.btn-copy-lineage').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const text = btn.dataset.lineageText;
+      if (text) {
+        const decoded = text.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"');
+        const footer = '\n\nGenerated by PBIP Lineage Explorer — https://github.com/JonathanJihwanKim/pbip-lineage-explorer';
+        navigator.clipboard.writeText(decoded + footer).then(() => {
+          const orig = btn.textContent;
+          btn.textContent = 'Copied!';
+          btn.style.color = '#4caf50';
+          setTimeout(() => { btn.textContent = orig; btn.style.color = ''; }, 1500);
         }).catch(() => {});
       }
     });
