@@ -4,7 +4,7 @@
  */
 
 import { NODE_COLORS } from '../utils/constants.js';
-import { buildTreeData, renderLineageTree, destroyTree } from './lineageTree.js';
+import { buildTreeData, buildVisualTreeData, renderLineageTree, destroyTree } from './lineageTree.js';
 
 let _onMeasureNavigate = null;
 let _onVisualNavigate = null;
@@ -89,11 +89,10 @@ export function renderVisualLineage(visualLineage, graph) {
     titleEl.insertAdjacentElement('afterend', sub);
   }
 
-  // D3 tree: use first measure's lineage if available
+  // D3 tree: visual as root, all measures as branches
   if (treeContainer) {
-    const firstWithLineage = allMeasures.find(m => m.lineage);
-    if (firstWithLineage) {
-      const treeData = buildTreeData(firstWithLineage.lineage, graph);
+    const treeData = buildVisualTreeData(visual, allMeasures, graph);
+    if (treeData) {
       renderLineageTree(treeContainer, treeData);
     } else {
       destroyTree(treeContainer);
@@ -134,7 +133,7 @@ export function renderVisualLineage(visualLineage, graph) {
       if (m.lineage) {
         html += renderMeasureChainSection(m.lineage.measureChain);
         html += renderSourceTableSection(m.lineage.sourceTable);
-        html += renderSummarySection(m.lineage.summaryTrees, m.lineage.measureChain, m.lineage.sourceTable);
+        html += renderVisualSummarySection(visual, m.lineage.measureChain, m.lineage.sourceTable);
       }
     } else {
       // Multiple measures or FP measures: accordion per measure
@@ -152,7 +151,7 @@ export function renderVisualLineage(visualLineage, graph) {
         if (m.lineage) {
           html += renderMeasureChainSection(m.lineage.measureChain);
           html += renderSourceTableSection(m.lineage.sourceTable);
-          html += renderSummarySection(m.lineage.summaryTrees, m.lineage.measureChain, m.lineage.sourceTable);
+          html += renderVisualSummarySection(visual, m.lineage.measureChain, m.lineage.sourceTable);
         }
         html += `</div></details>`;
       }
@@ -324,6 +323,31 @@ function renderSourceTableSection(sourceTable) {
 }
 
 // --- Section 4: Summary Trees (structured HTML, color-coded) ---
+
+/**
+ * Render summary section for a single selected visual (visual-first view).
+ */
+function renderVisualSummarySection(visual, measureChain, sourceTable) {
+  let html = '<div class="lineage-section">';
+  html += '<h3>4. Lineage Summary</h3>';
+
+  const colSourceMap = buildColSourceMap(sourceTable || []);
+  const visualHeader = `Visual: ${visual.type} "${visual.title}" (${visual.objectId})`;
+
+  html += '<div class="summary-tree-html">';
+  html += `<div class="summary-node layer-visual">`;
+  html += `<span class="layer-label">L1</span>`;
+  html += `<span class="summary-dot" style="background:#4caf50"></span>`;
+  html += `<span class="summary-node-name">${esc(visualHeader)}</span>`;
+  html += `</div>`;
+  if (measureChain) {
+    html += renderSummaryChainNode(measureChain, 1, colSourceMap);
+  }
+  html += '</div>';
+
+  html += '</div>';
+  return html;
+}
 
 function renderSummarySection(summaryTrees, measureChain, sourceTable) {
   let html = '<div class="lineage-section">';

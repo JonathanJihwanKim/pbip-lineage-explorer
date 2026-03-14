@@ -13,6 +13,50 @@ const VERTICAL_SPACING = 52;
 const HORIZONTAL_SPACING = 260;
 
 /**
+ * Build a tree for a visual-first view: selected visual as root,
+ * branching into each measure's upstream lineage.
+ * @param {{ title: string, type: string, page: string }} visual - The selected visual.
+ * @param {Array<{ measureName: string, lineage: object }>} allMeasures - All measures (direct + FP).
+ * @param {object} graph
+ * @returns {object} Tree data for renderLineageTree.
+ */
+export function buildVisualTreeData(visual, allMeasures, graph) {
+  const measuresWithLineage = allMeasures.filter(m => m.lineage);
+  if (measuresWithLineage.length === 0) return null;
+
+  const measureNodes = measuresWithLineage.map(m => {
+    const { measureChain, sourceTable } = m.lineage;
+    const sourceMap = new Map();
+    for (const row of sourceTable) {
+      sourceMap.set(`${row.pbiTable}.${row.pbiColumn}`, row);
+    }
+
+    const measureNode = {
+      name: measureChain.name,
+      layer: 2,
+      layerLabel: LAYER_LABELS[2],
+      type: 'measure',
+      detail: truncateExpr(measureChain.expression),
+      children: [],
+    };
+    addChainChildren(measureNode, measureChain, sourceMap, graph, new Set());
+    return measureNode;
+  });
+
+  // Visual as root, measures as children
+  const visualRoot = {
+    name: visual.title || visual.type || 'Visual',
+    layer: 1,
+    layerLabel: LAYER_LABELS[1],
+    type: 'visual',
+    detail: `${visual.type} on ${visual.page}`,
+    children: measureNodes,
+  };
+
+  return visualRoot;
+}
+
+/**
  * Build a hierarchical tree data structure from lineage output.
  * The root is the selected measure, with visuals as a branch above
  * and sub-measures/columns/sources as branches below.
