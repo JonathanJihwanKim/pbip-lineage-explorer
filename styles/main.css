@@ -226,6 +226,7 @@ button .icon { margin-right: 4px; }
   font-size: 12px; font-weight: 600; color: var(--text-secondary);
   padding: 4px 0; cursor: pointer; user-select: none;
   list-style: none;
+  min-width: 0; max-width: 100%;
 }
 
 .visual-group-header::-webkit-details-marker { display: none; }
@@ -1211,9 +1212,17 @@ mark {
 .page-layout-btn {
   display: inline-flex; align-items: center; justify-content: center;
   width: 24px; height: 22px; flex-shrink: 0;
-  background: transparent; border: 1px solid transparent; border-radius: 4px;
-  color: #ffd740; cursor: pointer;
+  background: rgba(66, 133, 244, 0.15);
+  border: 1px solid rgba(66, 133, 244, 0.5);
+  border-radius: 4px;
+  color: #4fc3f7; cursor: pointer;
   transition: background 0.15s, border-color 0.15s, color 0.15s;
+  position: relative; z-index: 1;
+  margin-left: auto;
+}
+
+.page-layout-btn svg {
+  display: block;
 }
 
 .page-layout-btn:hover {
