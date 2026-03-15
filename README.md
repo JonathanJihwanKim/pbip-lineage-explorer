@@ -42,6 +42,7 @@ PBIP Lineage Explorer reads your Power BI Project (PBIP) files directly in the b
 - **Field parameter & calculation group detection** — identifies advanced patterns automatically
 - **Orphan detection** — find unused measures that no visual references
 - **Interactive D3 graph** — tree layout with zoom, pan, search, and filtering
+- **View Page Layout** — see a scaled replica of your report page with every visual positioned exactly as in Power BI. Click any visual to trace its full lineage. Hover for measure and column details
 - **Copy DAX** — one-click copy of any measure's DAX expression
 
 ### For Data Engineers
@@ -61,15 +62,55 @@ PBIP Lineage Explorer reads your Power BI Project (PBIP) files directly in the b
 
 > Your files never leave your browser. All parsing happens client-side — nothing is uploaded anywhere.
 
+### View Page Layout
+
+Ever wondered what's actually on a report page without opening Power BI Desktop? The **View Page Layout** feature renders a minimap of your report page — every visual shown as a rectangle at its exact position, size, and stacking order.
+
+**How to open it:** In the left sidebar, switch to the **Visuals** tab and click the golden grid icon next to any page name.
+
+**What you see:**
+- Each visual is a rectangle labeled with its **type** (Bar, Table, KPI...), **title**, **measure count** (m), and **field count** (f)
+- Visuals are color-coded by category — charts (blue), tables (purple), cards (green), filters (orange)
+- Grouped and nested visuals are resolved to their absolute positions automatically
+- Hidden visuals are filtered out; visuals without position data are listed separately below the map
+
+**What you can do:**
+- **Click** any visual to instantly trace its full lineage (measures, columns, sources)
+- **Hover** to see a tooltip listing all measures, field parameters, and columns the visual references
+
+This gives you a bird's-eye view of a report page and a fast way to jump into lineage tracing for any visual.
+
 ---
 
 ## Quick Start
 
-1. Open the tool: **[jonathanjihwankim.github.io/pbip-lineage-explorer](https://jonathanjihwankim.github.io/pbip-lineage-explorer/)**
-2. Click **Open Project Folder** and select the root of your PBIP project
-3. The lineage graph renders immediately — click any measure or visual to trace dependencies
+> **Requires Chrome 86+ or Edge 86+** (uses the [File System Access API](https://developer.mozilla.org/en-US/docs/Web/API/File_System_API)). Firefox and Safari are not supported.
 
-<!-- TODO: Add numbered screenshot of each step -->
+1. Open the tool: **[jonathanjihwankim.github.io/pbip-lineage-explorer](https://jonathanjihwankim.github.io/pbip-lineage-explorer/)**
+2. Click **Open Project Folder** and select the root of your PBIP project (the folder containing `.SemanticModel` and `.Report` subfolders)
+3. The lineage graph renders immediately — click any measure or visual to trace dependencies
+4. Use the **Measures** tab (left sidebar) to browse measures by table, or switch to the **Visuals** tab to browse by page
+5. Click the golden grid icon next to a page name to open the **View Page Layout** minimap
+
+> **No PBIP project handy?** Click **Load Sample Data** on the welcome screen to explore the tool with a built-in demo project — no files needed.
+
+---
+
+## UI Overview
+
+| Area | What it does |
+|------|-------------|
+| **Left sidebar — Measures tab** | Browse all measures grouped by table. Search by name, toggle "Orphans only" to find unused measures. Click a measure to trace its lineage. |
+| **Left sidebar — Visuals tab** | Browse visuals grouped by page. Click a visual to trace its measures. Click the grid icon next to a page name to open the **View Page Layout** minimap. |
+| **Main area** | Displays the lineage graph (D3 tree), page layout view, or source column map — depending on your selection. |
+| **Toolbar** | Open Project, export buttons (SVG, PNG, CSV), and the Source Map toggle. |
+
+### Keyboard Shortcuts
+
+| Shortcut | Action |
+|----------|--------|
+| `/` | Focus the measure search box |
+| `Esc` | Close the source map view |
 
 ---
 
@@ -81,6 +122,7 @@ PBIP Lineage Explorer reads your Power BI Project (PBIP) files directly in the b
 - **"What measures are unused in my model?"** — Enable the orphan filter to find measures with no visual consumers
 - **"How is this KPI calculated?"** — Click the measure to see its full DAX dependency chain
 - **"Does this visual use a field parameter?"** — FP and CG badges are detected and shown automatically
+- **"What does this report page look like and what's on it?"** — Click the grid icon next to any page to see a visual map of the entire page layout
 
 ### Questions Data Engineers Ask Power BI Developers
 
@@ -110,6 +152,17 @@ Requires the [File System Access API](https://developer.mozilla.org/en-US/docs/W
 - ✅ Opera 72+
 - ❌ Firefox (not supported)
 - ❌ Safari (not supported)
+
+---
+
+## VS Code Extension
+
+PBIP Lineage Explorer is also available as a VS Code extension for developers who work directly in PBIP/TMDL files.
+
+- Search **"PBIP Lineage Explorer"** in the VS Code Extensions marketplace and install
+- The extension auto-activates when your workspace contains `.tmdl` files
+- **Sidebar panels**: Measure Explorer, Orphan Measures, Model Stats
+- **CodeLens**: inline "Trace Lineage" links appear above measure definitions in `.tmdl` files — click to view the lineage graph without leaving your editor
 
 ---
 
