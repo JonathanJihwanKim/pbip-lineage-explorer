@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { readFileSync, readdirSync, statSync } from 'fs';
 import { join } from 'path';
-import { identifyProjectStructure, analyze, findOrphans, traceMeasureLineage } from '../src/index.js';
+import { identifyProjectStructure, analyze, findOrphans, traceMeasureLineage, extractMDataSource } from '../src/index.js';
 
 /**
  * Integration test: load the sample PBIP project and run full analysis.
@@ -96,6 +96,83 @@ describe('analyze (integration)', () => {
     expect(stats.tables).toBeGreaterThan(0);
     expect(stats.measures).toBeGreaterThan(0);
     expect(stats.columns).toBeGreaterThan(0);
+  });
+
+  it('captures field parameter display names', () => {
+    const modelStructure = identifyProjectStructure(modelFiles);
+    const reportStructure = identifyProjectStructure(reportFiles);
+    const { graph } = analyze({ modelStructure, reportStructure });
+
+    // The Sales Metrics FP table should have display names
+    const fpTable = graph.nodes.get("table::Sales Metrics");
+    expect(fpTable).toBeDefined();
+    expect(fpTable.enrichment?.type).toBe('field_parameter');
+
+    // Check that fpDisplayNames are stored on the table metadata
+    const displayNames = fpTable.metadata?.fpDisplayNames;
+    expect(displayNames).toBeDefined();
+    expect(displayNames["measure::Sales.Total Sales"]).toBe("sales_kpi_01");
+    expect(displayNames["measure::Sales.Avg Sales"]).toBe("sales_kpi_02");
+    expect(displayNames["measure::Sales.Total Quantity"]).toBe("sales_kpi_03");
+  });
+
+  it('includes description in measure metadata', () => {
+    const modelStructure = identifyProjectStructure(modelFiles);
+    const { graph } = analyze({ modelStructure });
+
+    // All measure nodes should have description field in metadata (even if empty)
+    const measures = [...graph.nodes.values()].filter(n => n.type === 'measure');
+    for (const m of measures) {
+      expect(m.metadata).toHaveProperty('description');
+    }
+  });
+
+  it('resolves source table and columns via named expressions', () => {
+    const modelStructure = identifyProjectStructure(modelFiles);
+    const reportStructure = identifyProjectStructure(reportFiles);
+    const { graph } = analyze({ modelStructure, reportStructure });
+
+    // Sales table should have data source metadata from expressions.tmdl
+    const salesTable = graph.nodes.get('table::Sales');
+    expect(salesTable).toBeDefined();
+    expect(salesTable.metadata.dataSource).toBeDefined();
+    expect(salesTable.metadata.dataSource.sourceTable).toBe('fact_sales');
+    expect(salesTable.metadata.dataSource.schema).toBe('dbo');
+
+    // Amount column should have source column info resolved
+    const amountCol = graph.nodes.get('column::Sales.Amount');
+    expect(amountCol).toBeDefined();
+    expect(amountCol.metadata.sourceColumn).toBe('Amount');
+    expect(amountCol.metadata.sourceTablePath).toBe('mydb.dbo.fact_sales');
+
+    // Columns should have rename info from the expression's Table.RenameColumns
+    expect(amountCol.metadata.originalSourceColumn).toBe('sale_amount');
+    expect(amountCol.metadata.wasRenamed).toBe(true);
+    expect(amountCol.metadata.sourceTableFull).toBe('mydb.dbo.fact_sales.sale_amount');
+
+    // Trace lineage and verify source table appears in output
+    const totalSales = [...graph.nodes.values()].find(n => n.name === 'Total Sales' && n.type === 'measure');
+    const lineage = traceMeasureLineage(totalSales.id, graph);
+    expect(lineage.sourceTable.length).toBeGreaterThan(0);
+
+    const amountRow = lineage.sourceTable.find(r => r.pbiColumn === 'Amount');
+    expect(amountRow).toBeDefined();
+    expect(amountRow.sourceTable).toContain('fact_sales');
+    expect(amountRow.originalSourceColumn).toBe('sale_amount');
+    expect(amountRow.renamed).toBe(true);
+    expect(amountRow.pqExpression).toBe('sales_src');
+  });
+});
+
+describe('extractMDataSource', () => {
+  it('handles concatenated SQL in Value.NativeQuery', () => {
+    const mExpr = `let
+    Source = Value.NativeQuery(GoogleBigQuery.Database([BillingProject=_BillingProject]), "SELECT * FROM \`" & _BillingProject & ".report_business_units.business_unit_cur_func_dim\` ('" & _ReportId & "')", null, [EnableFolding=true])
+in
+    Source`;
+    const ds = extractMDataSource(mExpr);
+    expect(ds.sourceTable).toBe('business_unit_cur_func_dim');
+    expect(ds.database).toBe('report_business_units');
   });
 });
 

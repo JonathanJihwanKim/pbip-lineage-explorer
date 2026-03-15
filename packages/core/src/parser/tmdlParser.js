@@ -427,8 +427,11 @@ export function extractMDataSource(mExpression) {
 
   const result = { server: null, database: null, schema: null, sourceTable: null, type: null };
 
+  // Strip M block comments /* ... */ to avoid matching commented-out code
+  const cleanExpr = mExpression.replace(/\/\*[\s\S]*?\*\//g, '');
+
   // Sql.Database("server", "database")
-  const sqlMatch = mExpression.match(/Sql\.Database\s*\(\s*"([^"]+)"\s*,\s*"([^"]+)"\s*\)/i);
+  const sqlMatch = cleanExpr.match(/Sql\.Database\s*\(\s*"([^"]+)"\s*,\s*"([^"]+)"\s*\)/i);
   if (sqlMatch) {
     result.type = 'SQL';
     result.server = sqlMatch[1];
@@ -441,68 +444,81 @@ export function extractMDataSource(mExpression) {
   }
 
   // Schema and item: Source{[Schema="dbo",Item="tablename"]}
-  const schemaItemMatch = mExpression.match(/\{[^}]*Schema\s*=\s*"([^"]+)"[^}]*Item\s*=\s*"([^"]+)"[^}]*\}/i);
+  const schemaItemMatch = cleanExpr.match(/\{[^}]*Schema\s*=\s*"([^"]+)"[^}]*Item\s*=\s*"([^"]+)"[^}]*\}/i);
   if (schemaItemMatch) {
     result.schema = schemaItemMatch[1];
     result.sourceTable = schemaItemMatch[2];
   }
 
-  // Fallback: Source{[Name="tablename"]}
-  if (!result.sourceTable) {
-    const nameMatch = mExpression.match(/\{[^}]*Name\s*=\s*"([^"]+)"[^}]*\}/i);
+  // Fallback: Source{[Name="tablename"]} (only for non-BigQuery)
+  if (!result.sourceTable && !/GoogleBigQuery/i.test(cleanExpr)) {
+    const nameMatch = cleanExpr.match(/\{[^}]*Name\s*=\s*"([^"]+)"[^}]*\}/i);
     if (nameMatch) {
       result.sourceTable = nameMatch[1];
     }
   }
 
-  // GoogleBigQuery.Database — Pattern A: Schema navigation
-  if (!result.type) {
-    const bqMatch = mExpression.match(/GoogleBigQuery\.Database\s*\(\s*(?:"([^"]*)"|\[([^\]]*)\]|(\w+))/i);
-    if (bqMatch) {
-      result.type = 'BigQuery';
-      result.server = bqMatch[1] || bqMatch[2] || bqMatch[3] || null; // project
-
-      // Extract schema navigation: {[Name="dataset"]} followed by {[Name="table"]}
-      const nameMatches = [...mExpression.matchAll(/\{\s*\[\s*(?:Name|Schema)\s*=\s*"([^"]+)"\s*\]\s*\}/gi)];
-      if (nameMatches.length >= 2) {
-        result.database = nameMatches[0][1]; // dataset
-        result.sourceTable = nameMatches[1][1]; // table
-      } else if (nameMatches.length === 1) {
-        result.database = nameMatches[0][1]; // dataset (table might be in a different pattern)
-      }
-
-      // Also check Schema/Item pattern for BigQuery
-      const bqSchemaItem = mExpression.match(/\{[^}]*Schema\s*=\s*"([^"]+)"[^}]*Item\s*=\s*"([^"]+)"[^}]*\}/i);
-      if (bqSchemaItem) {
-        result.database = bqSchemaItem[1]; // dataset
-        result.sourceTable = bqSchemaItem[2]; // table
-      }
-    }
+  // GoogleBigQuery.Database detection
+  const bqMatch = cleanExpr.match(/GoogleBigQuery\.Database\s*\(\s*(?:"([^"]*)"|\[([^\]]*)\]|(\w+))/i);
+  if (bqMatch && !result.type) {
+    result.type = 'BigQuery';
+    result.server = bqMatch[1] || bqMatch[2] || bqMatch[3] || null;
   }
 
-  // Value.NativeQuery — Pattern B: Inline SQL (used with BigQuery and others)
-  if (!result.sourceTable) {
-    const nativeQueryMatch = mExpression.match(/Value\.NativeQuery\s*\([^,]*,\s*"([\s\S]*?)"\s*[,)]/i);
+  // Value.NativeQuery — extract table from SQL string (prioritize over schema navigation)
+  if (/Value\.NativeQuery/i.test(cleanExpr)) {
+    // First try: single quoted SQL string
+    const nativeQueryMatch = cleanExpr.match(/Value\.NativeQuery\s*\([^,]*,\s*"([\s\S]*?)"\s*[,)]/i);
     if (nativeQueryMatch) {
       const sql = nativeQueryMatch[1];
-      // Extract FROM clause: FROM `project.dataset.table` or FROM dataset.table
       const fromMatch = sql.match(/FROM\s+`?([A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+){1,2})`?/i);
       if (fromMatch) {
         const parts = fromMatch[1].split('.');
         if (parts.length === 3) {
-          // project.dataset.table
           result.server = result.server || parts[0];
           result.database = parts[1];
           result.sourceTable = parts[2];
         } else if (parts.length === 2) {
-          // dataset.table
           result.database = parts[0];
           result.sourceTable = parts[1];
         }
       }
-      if (!result.type && (result.database || result.sourceTable)) {
-        result.type = result.type || 'SQL/NativeQuery';
+    }
+
+    // Fallback: concatenated SQL string with & operators
+    // Pattern: "SELECT * FROM `" & param & ".dataset.table`"
+    if (!result.sourceTable) {
+      const tableInBackticks = cleanExpr.match(/\.([A-Za-z_][A-Za-z0-9_]+)\.([A-Za-z_][A-Za-z0-9_]+)`/);
+      if (tableInBackticks) {
+        result.database = result.database || tableInBackticks[1];
+        result.sourceTable = tableInBackticks[2];
       }
+    }
+
+    if (!result.type && (result.database || result.sourceTable)) {
+      result.type = 'BigQuery';
+    }
+  }
+
+  // BigQuery schema navigation (only when Value.NativeQuery didn't find a table)
+  if (bqMatch && !result.sourceTable) {
+    const nameMatches = [...cleanExpr.matchAll(/\{\s*\[(?:[^[\]]*,\s*)?Name\s*=\s*"([^"]+)"[^\]]*\]\s*\}/gi)];
+    if (nameMatches.length >= 3) {
+      result.server = result.server || nameMatches[0][1];
+      result.database = nameMatches[nameMatches.length - 2][1];
+      result.sourceTable = nameMatches[nameMatches.length - 1][1];
+    } else if (nameMatches.length === 2) {
+      result.database = nameMatches[0][1];
+      result.sourceTable = nameMatches[1][1];
+    } else if (nameMatches.length === 1) {
+      result.sourceTable = nameMatches[0][1];
+    }
+
+    // Also check Schema/Item pattern for BigQuery
+    const bqSchemaItem = cleanExpr.match(/\{[^}]*Schema\s*=\s*"([^"]+)"[^}]*Item\s*=\s*"([^"]+)"[^}]*\}/i);
+    if (bqSchemaItem) {
+      result.database = bqSchemaItem[1];
+      result.sourceTable = bqSchemaItem[2];
     }
   }
 
@@ -548,8 +564,8 @@ export function parseExpressions(content) {
       const name = unquoteName(exprMatch[1].trim());
       const firstPart = exprMatch[2].trim();
 
-      // Check if it's a simple literal parameter (e.g., expression _Dataset = "my_dataset")
-      const literalMatch = firstPart.match(/^"([^"]*)"$/);
+      // Check if it's a simple literal parameter (e.g., expression _Dataset = "my_dataset" meta [...])
+      const literalMatch = firstPart.match(/^"([^"]*)"(\s*meta\s*\[.*\])?\s*$/);
       if (literalMatch) {
         parameters.set(name, literalMatch[1]);
         expressions.push({ name, mExpression: literalMatch[1], kind: 'parameter' });
@@ -594,10 +610,23 @@ export function parseExpressions(content) {
       }
 
       const mExpression = parts.join('\n').trim();
-      expressions.push({ name, mExpression, kind: mExpression ? 'expression' : 'parameter' });
 
-      // If it looks like a simple value, also store as parameter
-      if (!mExpression.includes('\n') && mExpression.startsWith('"') && mExpression.endsWith('"')) {
+      // Detect parameter-like expressions (IsParameterQuery, #datetime, #date, numeric literals)
+      const isParameterExpr = /IsParameterQuery\s*=\s*true/i.test(mExpression)
+        || /^#datetime\s*\(/i.test(mExpression)
+        || /^#date\s*\(/i.test(mExpression)
+        || /^\d+(\.\d+)?\s*(meta\b|$)/i.test(mExpression);
+
+      const exprKind = (!mExpression || isParameterExpr) ? 'parameter' : 'expression';
+      expressions.push({ name, mExpression, kind: exprKind });
+
+      // If it's a parameter with a quoted string value, store as parameter for resolution
+      if (isParameterExpr) {
+        const quotedVal = mExpression.match(/^"([^"]*)"/);
+        if (quotedVal) {
+          parameters.set(name, quotedVal[1]);
+        }
+      } else if (!mExpression.includes('\n') && mExpression.startsWith('"') && mExpression.endsWith('"')) {
         parameters.set(name, mExpression.slice(1, -1));
       }
 

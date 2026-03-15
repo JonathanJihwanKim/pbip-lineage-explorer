@@ -159,7 +159,8 @@ export function buildGraph(parsedModel, parsedReport, enrichments) {
           const measureId = `measure::${table.name}.${measure.name}`;
           nodes.set(measureId, createNode(measureId, measure.name, NODE_TYPES.MEASURE, {
             table: table.name,
-            expression: measure.expression
+            expression: measure.expression,
+            description: measure.description || ''
           }));
         }
       }
@@ -256,6 +257,7 @@ export function buildGraph(parsedModel, parsedReport, enrichments) {
           nodes.set(exprId, createNode(exprId, expr.name, NODE_TYPES.EXPRESSION, {
             mExpression: expr.mExpression,
           }));
+          // Only add non-parameter expressions to the map used for partition linking
           expressionMap.set(expr.name, expr);
 
           // Try to extract data source from the expression
@@ -306,54 +308,111 @@ export function buildGraph(parsedModel, parsedReport, enrichments) {
         if (!partition.sourceExpression) continue;
         const resolvedExpr = resolveParameters(partition.sourceExpression);
         const ds = extractMDataSource(resolvedExpr);
-        if (!ds) continue;
 
-        // Build deduplicated source key
-        const sourceKey = ds.database
-          ? `${(ds.server || '').toLowerCase()}/${ds.database}`
-          : (ds.server || '').toLowerCase();
-        if (!sourceKey) continue;
+        // Check if partition references a named expression from expressions.tmdl
+        // Could be a simple reference like "expr_name" or M code like "let Source = expr_name in ..."
+        const trimmedSource = partition.sourceExpression.trim();
+        let linkedExprName = null;
+        let linkedExpr = null;
 
-        const sourceId = `source::${sourceKey}`;
-        if (!sourceNodeCache.has(sourceId)) {
-          const displayName = ds.database || ds.server || sourceKey;
-          nodes.set(sourceId, createNode(sourceId, displayName, NODE_TYPES.SOURCE, {
-            server: ds.server,
-            database: ds.database,
-            sourceType: ds.type
-          }));
-          sourceNodeCache.set(sourceId, true);
+        // Pattern 1: Entire source is a single expression name
+        const simpleRefMatch = trimmedSource.match(/^(\w+)$/);
+        if (simpleRefMatch && expressionMap.has(simpleRefMatch[1])) {
+          linkedExprName = simpleRefMatch[1];
+          linkedExpr = expressionMap.get(linkedExprName);
         }
 
-        // Edge: table -> source
-        const tableId = `table::${table.name}`;
-        edges.push(createEdge(tableId, sourceId, EDGE_TYPES.TABLE_TO_SOURCE));
-
-        // Store source metadata on the table node
-        const tableNode = nodes.get(tableId);
-        if (tableNode) {
-          tableNode.metadata.dataSource = {
-            server: ds.server,
-            database: ds.database,
-            schema: ds.schema,
-            sourceTable: ds.sourceTable,
-            sourceType: ds.type,
-            mode: partition.mode
-          };
-
-          // Extract column rename mappings from the M expression
-          const renameMap = extractRenameColumns(resolvedExpr);
-          if (renameMap.size > 0) {
-            tableNode.metadata.renameMap = Object.fromEntries(renameMap);
+        // Pattern 2: M code references a known expression (e.g., let Source = expr_name)
+        // Prefer expressions used in Source= assignment; skip parameter expressions
+        if (!linkedExpr) {
+          let fallbackExprName = null;
+          let fallbackExpr = null;
+          for (const [exprName, exprObj] of expressionMap) {
+            // Skip parameter-kind expressions (RangeStart, RangeEnd, etc.)
+            if (exprObj.kind === 'parameter') continue;
+            // Match as a standalone identifier (not inside quotes)
+            const escaped = exprName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const refRegex = new RegExp('(?<!["\'\'\\w])' + escaped + '(?!["\'\'\\w])');
+            if (refRegex.test(trimmedSource)) {
+              // Prefer Source= or := assignment pattern
+              const assignRegex = new RegExp('(?:Source\\s*=|:=)\\s*' + escaped + '\\b');
+              if (assignRegex.test(trimmedSource)) {
+                linkedExprName = exprName;
+                linkedExpr = exprObj;
+                break;
+              }
+              // Keep as fallback if no assignment match yet
+              if (!fallbackExprName) {
+                fallbackExprName = exprName;
+                fallbackExpr = exprObj;
+              }
+            }
+          }
+          if (!linkedExpr && fallbackExprName) {
+            linkedExprName = fallbackExprName;
+            linkedExpr = fallbackExpr;
           }
         }
 
-        // Check if partition references a named expression from expressions.tmdl
-        const exprRefMatch = partition.sourceExpression.match(/^\s*(\w[\w_]*)\s*$/);
-        if (exprRefMatch && expressionMap.has(exprRefMatch[1])) {
-          const exprId = `expression::${exprRefMatch[1]}`;
+        // If no direct data source, try to resolve from the linked expression
+        let effectiveDs = ds;
+        let effectiveExpr = resolvedExpr;
+        if (!effectiveDs && linkedExpr) {
+          effectiveExpr = resolveParameters(linkedExpr.mExpression);
+          effectiveDs = extractMDataSource(effectiveExpr);
+        }
+
+        if (effectiveDs) {
+          // Build deduplicated source key
+          const sourceKey = effectiveDs.database
+            ? `${(effectiveDs.server || '').toLowerCase()}/${effectiveDs.database}`
+            : (effectiveDs.server || '').toLowerCase();
+          if (sourceKey) {
+            const sourceId = `source::${sourceKey}`;
+            if (!sourceNodeCache.has(sourceId)) {
+              const displayName = effectiveDs.database || effectiveDs.server || sourceKey;
+              nodes.set(sourceId, createNode(sourceId, displayName, NODE_TYPES.SOURCE, {
+                server: effectiveDs.server,
+                database: effectiveDs.database,
+                sourceType: effectiveDs.type
+              }));
+              sourceNodeCache.set(sourceId, true);
+            }
+
+            // Edge: table -> source
+            const tableId = `table::${table.name}`;
+            edges.push(createEdge(tableId, sourceId, EDGE_TYPES.TABLE_TO_SOURCE));
+
+            // Store source metadata on the table node
+            const tableNode = nodes.get(tableId);
+            if (tableNode) {
+              tableNode.metadata.dataSource = {
+                server: effectiveDs.server,
+                database: effectiveDs.database,
+                schema: effectiveDs.schema,
+                sourceTable: effectiveDs.sourceTable,
+                sourceType: effectiveDs.type,
+                mode: partition.mode
+              };
+
+              // Extract column rename mappings from the M expression
+              // Try from partition source first, then from the linked expression
+              let renameMap = extractRenameColumns(resolvedExpr);
+              if (renameMap.size === 0 && effectiveExpr !== resolvedExpr) {
+                renameMap = extractRenameColumns(effectiveExpr);
+              }
+              if (renameMap.size > 0) {
+                tableNode.metadata.renameMap = Object.fromEntries(renameMap);
+              }
+            }
+          }
+        }
+
+        // Create TABLE_TO_EXPRESSION edge for named expression references
+        if (linkedExprName && linkedExpr) {
+          const exprId = `expression::${linkedExprName}`;
           if (nodes.has(exprId)) {
-            edges.push(createEdge(tableId, exprId, EDGE_TYPES.TABLE_TO_EXPRESSION));
+            edges.push(createEdge(`table::${table.name}`, exprId, EDGE_TYPES.TABLE_TO_EXPRESSION));
           }
         }
       }
@@ -366,10 +425,38 @@ export function buildGraph(parsedModel, parsedReport, enrichments) {
     for (const table of parsedModel.tables) {
       const tableId = `table::${table.name}`;
       const tableNode = nodes.get(tableId);
-      if (!tableNode?.metadata?.dataSource) continue;
 
-      const renameMap = tableNode.metadata.renameMap || {};
-      const ds = tableNode.metadata.dataSource;
+      // Get data source from the table directly, or from a linked expression node
+      let ds = tableNode?.metadata?.dataSource;
+      let renameMap = tableNode?.metadata?.renameMap || {};
+
+      if (!ds || Object.keys(renameMap).length === 0) {
+        // Check if table links to an expression node that has data source info or rename maps
+        const tableUp = (function buildAdj() {
+          const up = [];
+          for (const edge of edges) {
+            if (edge.source === tableId && (edge.type === EDGE_TYPES.TABLE_TO_EXPRESSION || edge.type === EDGE_TYPES.TABLE_TO_SOURCE)) {
+              up.push(edge.target);
+            }
+          }
+          return up;
+        })();
+        for (const upId of tableUp) {
+          const upNode = nodes.get(upId);
+          if (!ds && upNode?.metadata?.dataSource) {
+            ds = upNode.metadata.dataSource;
+          }
+          // Also extract rename map from expression M code if not already found
+          if (Object.keys(renameMap).length === 0 && upNode?.type === 'expression' && upNode.metadata?.mExpression) {
+            const exprRenames = extractRenameColumns(upNode.metadata.mExpression);
+            if (exprRenames.size > 0) {
+              renameMap = Object.fromEntries(exprRenames);
+            }
+          }
+        }
+      }
+
+      if (!ds) continue;
 
       for (const col of (table.columns || [])) {
         const colId = `column::${table.name}.${col.name}`;
@@ -389,8 +476,11 @@ export function buildGraph(parsedModel, parsedReport, enrichments) {
           const fullTable = ds.schema
             ? `${ds.schema}.${ds.sourceTable}`
             : ds.sourceTable;
-          colNode.metadata.sourceTableFull = `${fullTable}.${originalCol}`;
-          colNode.metadata.sourceTablePath = fullTable;
+          const fullTableWithDb = ds.database
+            ? `${ds.database}.${fullTable}`
+            : fullTable;
+          colNode.metadata.sourceTableFull = `${fullTableWithDb}.${originalCol}`;
+          colNode.metadata.sourceTablePath = fullTableWithDb;
         }
       }
     }
@@ -490,7 +580,9 @@ export function buildGraph(parsedModel, parsedReport, enrichments) {
         }
 
         // Create edges from field parameter table to each referenced field
+        // and store display name mapping on the FP table node
         const refPattern = /'([^']+)'\[([^\]]+)\]/;
+        const fpDisplayNames = {};
         for (const field of (fp.fields || [])) {
           const refMatch = field.reference?.match(refPattern);
           if (!refMatch) continue;
@@ -501,7 +593,13 @@ export function buildGraph(parsedModel, parsedReport, enrichments) {
           const targetId = nodes.has(measureId) ? measureId : (nodes.has(colId) ? colId : null);
           if (targetId) {
             edges.push(createEdge(tableId, targetId, EDGE_TYPES.FIELD_PARAM_TO_FIELD));
+            if (field.displayName) {
+              fpDisplayNames[targetId] = field.displayName;
+            }
           }
+        }
+        if (tableNode && Object.keys(fpDisplayNames).length > 0) {
+          tableNode.metadata.fpDisplayNames = fpDisplayNames;
         }
       }
     }

@@ -38,16 +38,36 @@ export function detectFieldParameter(table) {
   }
 
   // Also search partition source expressions for NAMEOF (TMDL calculated tables)
+  // and extract display names from field parameter rows like:
+  //   ("globaloverview01", NAMEOF('Measure'[First Time Right]), 0)
   const partitions = table.partitions || [];
   for (const partition of partitions) {
     const src = partition.sourceExpression || '';
+    // Match each row: ("displayName", NAMEOF('Table'[Field]), ordinal)
+    const rowPattern = /\(\s*"([^"]+)"\s*,\s*NAMEOF\s*\(\s*(?:'([^']+)'\s*\[([^\]]+)\]|\[([^\]]+)\])\s*\)\s*,\s*(\d+)\s*\)/gi;
+    let rowMatch;
+    while ((rowMatch = rowPattern.exec(src)) !== null) {
+      const displayName = rowMatch[1];
+      const refTable = rowMatch[2];
+      const refField = rowMatch[3] || rowMatch[4];
+      const ordinal = parseInt(rowMatch[5], 10);
+      if (refTable && refField) {
+        nameofFields.push({ name: refField, reference: `'${refTable}'[${refField}]`, displayName, ordinal });
+      } else if (refField) {
+        nameofFields.push({ name: refField, reference: `[${refField}]`, displayName, ordinal });
+      }
+    }
+    // Fallback: also search for plain NAMEOF without row context (column expressions)
     let m;
     nameofPattern.lastIndex = 0;
     while ((m = nameofPattern.exec(src)) !== null) {
-      if (m[1] && m[2]) {
-        nameofFields.push({ name: m[2], reference: `'${m[1]}'[${m[2]}]` });
-      } else if (m[3]) {
-        nameofFields.push({ name: m[3], reference: `[${m[3]}]` });
+      const refField = m[2] || m[3];
+      if (refField && !nameofFields.some(f => f.name === refField)) {
+        if (m[1] && m[2]) {
+          nameofFields.push({ name: m[2], reference: `'${m[1]}'[${m[2]}]` });
+        } else if (m[3]) {
+          nameofFields.push({ name: m[3], reference: `[${m[3]}]` });
+        }
       }
     }
   }

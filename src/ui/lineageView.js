@@ -144,6 +144,7 @@ export function renderVisualLineage(visualLineage, graph) {
         html += `<summary class="measure-accordion-header">`;
         html += `<span class="chain-dot" style="background:${NODE_COLORS.measure};display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;"></span>`;
         html += `[${esc(m.measureName)}]`;
+        if (m.fpDisplayName) html += ` <span class="fp-display-name">${esc(m.fpDisplayName)}</span>`;
         if (isFp && !isDirect) html += ` <span class="visual-type-badge" style="background:rgba(255,152,0,0.2);color:#ff9800;margin-left:6px">FP</span>`;
         if (isDirect) html += ` <span class="visual-type-badge" style="background:rgba(76,175,80,0.2);color:#4caf50;margin-left:6px">active</span>`;
         html += `</summary>`;
@@ -243,6 +244,7 @@ function renderChainNode(chain, depth) {
   html += `<span class="chain-dot" style="background:${NODE_COLORS.measure}"></span>`;
   html += `<strong class="chain-name clickable" data-id="${esc(chain.id)}">[${esc(chain.name)}]</strong>`;
   if (chain.table) html += ` <span class="chain-table">(${esc(chain.table)})</span>`;
+  if (chain.description) html += ` <span class="chain-description">${esc(chain.description)}</span>`;
   // Copy DAX button
   if (chain.expression) {
     html += ` <button class="btn-copy-dax" data-dax="${esc(chain.expression)}" title="Copy DAX">&#128203;</button>`;
