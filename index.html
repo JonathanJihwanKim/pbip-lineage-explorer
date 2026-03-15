@@ -55,16 +55,16 @@
     <!-- Left: Sidebar with Measures / Visuals tabs -->
     <aside id="measure-picker" class="sidebar sidebar-left">
       <div class="sidebar-tabs">
-        <button class="sidebar-tab active" data-tab="measures">
+        <button class="sidebar-tab" data-tab="measures">
           Measures <span id="measure-count" class="measure-count-badge"></span>
         </button>
-        <button class="sidebar-tab" data-tab="visuals">
+        <button class="sidebar-tab active" data-tab="visuals">
           Visuals <span id="visual-count" class="measure-count-badge"></span>
         </button>
       </div>
 
       <!-- Measures tab panel -->
-      <div class="tab-panel" id="tab-measures">
+      <div class="tab-panel hidden" id="tab-measures">
         <div class="search-group">
           <input type="text" id="measure-search" placeholder="Search measures..." autocomplete="off" />
           <div id="measure-search-info" class="search-info hidden"></div>
@@ -78,7 +78,7 @@
       </div>
 
       <!-- Visuals tab panel -->
-      <div class="tab-panel hidden" id="tab-visuals">
+      <div class="tab-panel" id="tab-visuals">
         <div class="search-group">
           <input type="text" id="visual-search" placeholder="Search visuals..." autocomplete="off" />
         </div>
