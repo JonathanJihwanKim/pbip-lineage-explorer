@@ -8,14 +8,16 @@ let _callbacks = {};
 
 /**
  * Initialize the page layout component.
- * @param {{ onVisualSelect: function, onBackClick: function }} callbacks
+ * @param {{ onVisualSelect: function }} callbacks
  */
 export function initPageLayout(callbacks = {}) {
   _callbacks = callbacks;
 }
 
 /**
- * Render the page layout diagram into #lineage-content.
+ * Render the page layout diagram using the existing lineage content structure.
+ * Uses #lineage-title for the page name, #lineage-tree-container for the canvas,
+ * and #lineage-sections for supplementary content.
  * @param {object} pageNode - The page graph node.
  * @param {object} graph - The full graph { nodes, adjacency }.
  */
@@ -23,6 +25,9 @@ export function renderPageLayout(pageNode, graph) {
   const empty = document.getElementById('lineage-empty');
   const content = document.getElementById('lineage-content');
   const sourceMap = document.getElementById('source-map-container');
+  const titleEl = document.getElementById('lineage-title');
+  const treeContainer = document.getElementById('lineage-tree-container');
+  const sectionsContainer = document.getElementById('lineage-sections');
 
   if (!content) return;
 
@@ -34,6 +39,18 @@ export function renderPageLayout(pageNode, graph) {
   const pageH = pageNode.metadata.height || 720;
   const pageId = pageNode.metadata.pageId;
 
+  // Set title
+  if (titleEl) {
+    titleEl.textContent = pageNode.name;
+    // Remove any existing subtitle and add page dimensions subtitle
+    const oldSub = titleEl.nextElementSibling;
+    if (oldSub && oldSub.classList.contains('lineage-subtitle')) oldSub.remove();
+    const sub = document.createElement('div');
+    sub.className = 'lineage-subtitle';
+    sub.textContent = `${pageW} \u00d7 ${pageH}`;
+    titleEl.insertAdjacentElement('afterend', sub);
+  }
+
   // Gather visuals on this page
   const visuals = [];
   for (const node of graph.nodes.values()) {
@@ -44,8 +61,8 @@ export function renderPageLayout(pageNode, graph) {
     let columnCount = 0;
     const measures = [];
     const columns = [];
-    const fpTables = []; // field parameter table names
-    const fpMeasures = []; // measures resolved from field parameters
+    const fpTables = [];
+    const fpMeasures = [];
     const upstream = graph.adjacency.upstream.get(node.id) || [];
 
     for (const upId of upstream) {
@@ -58,7 +75,6 @@ export function renderPageLayout(pageNode, graph) {
         columnCount++;
         columns.push(`${upNode.metadata?.table || ''}.${upNode.name}`);
       } else if (upNode.type === 'table' && upNode.enrichment?.type === 'field_parameter') {
-        // This is a field parameter table — resolve its referenced measures/columns
         fpTables.push(upNode.name);
         const fpUpstream = graph.adjacency.upstream.get(upNode.id) || [];
         for (const fpUpId of fpUpstream) {
@@ -74,9 +90,7 @@ export function renderPageLayout(pageNode, graph) {
       }
     }
 
-    // Total measure count includes FP-resolved measures
     const totalMeasureCount = measureCount + fpMeasures.length;
-    const totalColumnCount = columnCount;
 
     visuals.push({
       id: node.id,
@@ -84,7 +98,7 @@ export function renderPageLayout(pageNode, graph) {
       type: node.metadata.visualType || 'unknown',
       position: node.metadata.position,
       measureCount: totalMeasureCount,
-      columnCount: totalColumnCount,
+      columnCount,
       measures,
       fpMeasures,
       fpTables,
@@ -95,67 +109,60 @@ export function renderPageLayout(pageNode, graph) {
   const positioned = visuals.filter(v => v.position);
   const unpositioned = visuals.filter(v => !v.position);
 
-  let html = '';
+  // Render canvas into #lineage-tree-container
+  if (treeContainer) {
+    const paddingPct = (pageH / pageW * 100).toFixed(4);
+    let canvasHtml = `<div class="page-layout-canvas" style="padding-bottom: ${paddingPct}%">`;
 
-  // Title row
-  html += `<div class="lineage-title-row">`;
-  html += `<button id="btn-back" class="btn-back hidden" title="Go back (Alt+Left)">&larr;</button>`;
-  html += `<h2 class="lineage-title">${esc(pageNode.name)}</h2>`;
-  html += `</div>`;
-  html += `<div class="page-layout-subtitle">${pageW} &times; ${pageH} &middot; ${visuals.length} visual${visuals.length !== 1 ? 's' : ''}</div>`;
-
-  // Canvas
-  const paddingPct = (pageH / pageW * 100).toFixed(4);
-  html += `<div class="page-layout-canvas" style="padding-bottom: ${paddingPct}%">`;
-
-  for (const v of positioned) {
-    const p = v.position;
-    const left = (p.x / pageW * 100).toFixed(3);
-    const top = (p.y / pageH * 100).toFixed(3);
-    const width = (p.width / pageW * 100).toFixed(3);
-    const height = (p.height / pageH * 100).toFixed(3);
-    const cat = typeCategory(v.type);
-    const label = v.title || shortType(v.type);
-
-    html += `<div class="page-layout-visual" data-id="${esc(v.id)}" data-category="${cat}" `;
-    html += `style="left:${left}%;top:${top}%;width:${width}%;height:${height}%" `;
-    html += `title="">`;
-    html += `<span class="page-layout-visual-badge" data-category="${cat}">${esc(shortType(v.type))}</span>`;
-    html += `<span class="page-layout-visual-title">${esc(label)}</span>`;
-    if (v.measureCount > 0 || v.columnCount > 0) {
-      const parts = [];
-      if (v.measureCount > 0) parts.push(`${v.measureCount}m`);
-      if (v.columnCount > 0) parts.push(`${v.columnCount}f`);
-      html += `<span class="page-layout-visual-meta">${parts.join(' ')}</span>`;
-    }
-    html += `</div>`;
-  }
-
-  html += `</div>`;
-
-  // Unpositioned visuals fallback
-  if (unpositioned.length > 0) {
-    html += `<div class="page-layout-unpositioned">`;
-    html += `<div class="page-layout-unpositioned-header">Visuals without position data (${unpositioned.length})</div>`;
-    html += `<div class="page-layout-unpositioned-list">`;
-    for (const v of unpositioned) {
+    for (const v of positioned) {
+      const p = v.position;
+      const left = (p.x / pageW * 100).toFixed(3);
+      const top = (p.y / pageH * 100).toFixed(3);
+      const width = (p.width / pageW * 100).toFixed(3);
+      const height = (p.height / pageH * 100).toFixed(3);
       const cat = typeCategory(v.type);
       const label = v.title || shortType(v.type);
-      html += `<div class="page-layout-unpositioned-item" data-id="${esc(v.id)}">`;
-      html += `<span class="visual-type-badge" data-category="${cat}">${esc(shortType(v.type))}</span>`;
-      html += `<span>${esc(label)}</span>`;
-      if (v.measureCount > 0) html += `<span class="visual-measure-count">${v.measureCount}</span>`;
-      html += `</div>`;
+
+      canvasHtml += `<div class="page-layout-visual" data-id="${esc(v.id)}" data-category="${cat}" `;
+      canvasHtml += `style="left:${left}%;top:${top}%;width:${width}%;height:${height}%" `;
+      canvasHtml += `title="">`;
+      canvasHtml += `<span class="page-layout-visual-badge" data-category="${cat}">${esc(shortType(v.type))}</span>`;
+      canvasHtml += `<span class="page-layout-visual-title">${esc(label)}</span>`;
+      if (v.measureCount > 0 || v.columnCount > 0) {
+        const parts = [];
+        if (v.measureCount > 0) parts.push(`${v.measureCount}m`);
+        if (v.columnCount > 0) parts.push(`${v.columnCount}f`);
+        canvasHtml += `<span class="page-layout-visual-meta">${parts.join(' ')}</span>`;
+      }
+      canvasHtml += `</div>`;
     }
-    html += `</div></div>`;
+
+    canvasHtml += `</div>`;
+    treeContainer.innerHTML = canvasHtml;
   }
 
-  content.innerHTML = html;
+  // Render unpositioned visuals + stats into #lineage-sections
+  if (sectionsContainer) {
+    let html = '';
+    html += `<div class="page-layout-stats">${visuals.length} visual${visuals.length !== 1 ? 's' : ''}</div>`;
 
-  // Re-bind back button (the original was destroyed by innerHTML replacement)
-  const btnBack = document.getElementById('btn-back');
-  if (btnBack && _callbacks.onBackClick) {
-    btnBack.addEventListener('click', _callbacks.onBackClick);
+    if (unpositioned.length > 0) {
+      html += `<div class="page-layout-unpositioned">`;
+      html += `<div class="page-layout-unpositioned-header">Visuals without position data (${unpositioned.length})</div>`;
+      html += `<div class="page-layout-unpositioned-list">`;
+      for (const v of unpositioned) {
+        const cat = typeCategory(v.type);
+        const label = v.title || shortType(v.type);
+        html += `<div class="page-layout-unpositioned-item" data-id="${esc(v.id)}">`;
+        html += `<span class="visual-type-badge" data-category="${cat}">${esc(shortType(v.type))}</span>`;
+        html += `<span>${esc(label)}</span>`;
+        if (v.measureCount > 0) html += `<span class="visual-measure-count">${v.measureCount}</span>`;
+        html += `</div>`;
+      }
+      html += `</div></div>`;
+    }
+
+    sectionsContainer.innerHTML = html;
   }
 
   // Build tooltip element
@@ -167,7 +174,7 @@ export function renderPageLayout(pageNode, graph) {
     document.body.appendChild(tooltip);
   }
 
-  // Bind interactions
+  // Bind interactions on all visual rectangles
   const allItems = content.querySelectorAll('.page-layout-visual, .page-layout-unpositioned-item');
   allItems.forEach(el => {
     el.addEventListener('click', (e) => {
@@ -175,7 +182,7 @@ export function renderPageLayout(pageNode, graph) {
       if (_callbacks.onVisualSelect) _callbacks.onVisualSelect(el.dataset.id);
     });
 
-    el.addEventListener('mouseenter', (e) => {
+    el.addEventListener('mouseenter', () => {
       const v = visuals.find(vis => vis.id === el.dataset.id);
       if (!v) return;
       let tipHtml = `<div class="tip-title">${esc(v.title || shortType(v.type))}</div>`;
@@ -203,7 +210,6 @@ export function renderPageLayout(pageNode, graph) {
     el.addEventListener('mousemove', (e) => {
       const x = e.clientX + 12;
       const y = e.clientY + 12;
-      // Keep tooltip on screen
       const maxX = window.innerWidth - tooltip.offsetWidth - 8;
       const maxY = window.innerHeight - tooltip.offsetHeight - 8;
       tooltip.style.left = `${Math.min(x, maxX)}px`;

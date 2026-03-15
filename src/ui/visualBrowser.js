@@ -145,10 +145,10 @@ function renderList(visuals) {
   for (const [page, items] of groups) {
     html += `<details class="visual-group" open>`;
     if (items.length === 0) {
-      html += `<summary class="visual-group-header">${esc(page)} <span class="measure-group-count empty-page">(empty)</span></summary>`;
+      html += `<summary class="visual-group-header"><span class="visual-group-name">${esc(page)} <span class="measure-group-count empty-page">(empty)</span></span></summary>`;
     } else {
-      html += `<summary class="visual-group-header">${esc(page)} <span class="measure-group-count">(${items.length})</span>`;
-      html += `<button class="page-layout-btn" data-page="${esc(page)}" title="Show page layout diagram">&#9638;</button>`;
+      html += `<summary class="visual-group-header"><span class="visual-group-name">${esc(page)} <span class="measure-group-count">(${items.length})</span></span>`;
+      html += `<button class="page-layout-btn" data-page="${esc(page)}" aria-label="View page layout"><svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><rect x="1" y="1" width="5" height="5" rx="1"/><rect x="8" y="1" width="5" height="5" rx="1"/><rect x="1" y="8" width="5" height="5" rx="1"/><rect x="8" y="8" width="5" height="5" rx="1"/></svg></button>`;
       html += `</summary>`;
     }
     html += `<div class="visual-group-items">`;
@@ -184,6 +184,34 @@ function renderList(visuals) {
       e.preventDefault();
       e.stopPropagation();
       if (_callbacks.onPageLayoutSelect) _callbacks.onPageLayoutSelect(btn.dataset.page);
+    });
+
+    btn.addEventListener('mouseenter', () => {
+      let tip = document.getElementById('sidebar-tooltip');
+      if (!tip) {
+        tip = document.createElement('div');
+        tip.id = 'sidebar-tooltip';
+        tip.className = 'page-layout-tooltip';
+        document.body.appendChild(tip);
+      }
+      tip.textContent = 'View page layout';
+      tip.classList.remove('hidden');
+    });
+
+    btn.addEventListener('mousemove', (e) => {
+      const tip = document.getElementById('sidebar-tooltip');
+      if (!tip) return;
+      const x = e.clientX + 10;
+      const y = e.clientY + 10;
+      const maxX = window.innerWidth - tip.offsetWidth - 8;
+      const maxY = window.innerHeight - tip.offsetHeight - 8;
+      tip.style.left = `${Math.min(x, maxX)}px`;
+      tip.style.top = `${Math.min(y, maxY)}px`;
+    });
+
+    btn.addEventListener('mouseleave', () => {
+      const tip = document.getElementById('sidebar-tooltip');
+      if (tip) tip.classList.add('hidden');
     });
   });
 }

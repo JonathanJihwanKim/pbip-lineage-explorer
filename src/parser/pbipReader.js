@@ -6,10 +6,13 @@
 import { identifyProjectStructure, findDefinitionPbir, parseSemanticModelReference, isRelevantFile } from '@pbip-lineage/core';
 
 /**
- * Check if the File System Access API is available.
+ * Check if the File System Access API is available and usable.
+ * showDirectoryPicker exists in Chrome even on file:// but throws SecurityError.
  */
 export function hasFileSystemAccess() {
-  return typeof window !== 'undefined' && !!window.showDirectoryPicker;
+  return typeof window !== 'undefined' &&
+    !!window.showDirectoryPicker &&
+    window.isSecureContext;
 }
 
 /**

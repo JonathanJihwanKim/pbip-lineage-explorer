@@ -40,7 +40,7 @@ function init() {
   initMeasurePicker({ onSelect: handleMeasureSelect });
   initVisualBrowser({ onVisualSelect: handleVisualSelect, onMeasureNavigate: handleMeasureSelect, onPageLayoutSelect: handlePageLayoutSelect });
   initLineageView({ onMeasureNavigate: handleMeasureSelect, onVisualNavigate: handleVisualSelect });
-  initPageLayout({ onVisualSelect: handleVisualSelect, onBackClick: navigateBack });
+  initPageLayout({ onVisualSelect: handleVisualSelect });
 
   const btnLoadModel = document.getElementById('btn-load-model');
   if (btnLoadModel) btnLoadModel.addEventListener('click', handleLoadSemanticModel);
