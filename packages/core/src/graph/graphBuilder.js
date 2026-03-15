@@ -508,6 +508,8 @@ export function buildGraph(parsedModel, parsedReport, enrichments) {
           pageId: visual.pageId,
           title: visual.title || '',
           position: visual.position || null,
+          isHidden: visual.isHidden || false,
+          parentGroupName: visual.parentGroupName || null,
         }));
 
         // Visual belongs to page
