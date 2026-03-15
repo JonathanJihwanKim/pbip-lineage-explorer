@@ -53,20 +53,7 @@ export function populateSourceMapping(graph) {
       sourceTable,
       sourceType,
       wasRenamed,
-      pqExpression: '',
     });
-
-    // Fill PQ expression from table's upstream expression node
-    if (tableNode) {
-      const tableUp = graph.adjacency.upstream.get(tableId) || [];
-      for (const upId of tableUp) {
-        const upNode = graph.nodes.get(upId);
-        if (upNode?.type === 'expression') {
-          _rows[_rows.length - 1].pqExpression = upNode.name;
-          break;
-        }
-      }
-    }
   }
 
   // Sort by table then column
