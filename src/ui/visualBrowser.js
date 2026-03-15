@@ -147,7 +147,9 @@ function renderList(visuals) {
     if (items.length === 0) {
       html += `<summary class="visual-group-header">${esc(page)} <span class="measure-group-count empty-page">(empty)</span></summary>`;
     } else {
-      html += `<summary class="visual-group-header">${esc(page)} <span class="measure-group-count">(${items.length})</span></summary>`;
+      html += `<summary class="visual-group-header">${esc(page)} <span class="measure-group-count">(${items.length})</span>`;
+      html += `<button class="page-layout-btn" data-page="${esc(page)}" title="Show page layout diagram">&#9638;</button>`;
+      html += `</summary>`;
     }
     html += `<div class="visual-group-items">`;
     for (const v of items) {
@@ -174,6 +176,14 @@ function renderList(visuals) {
       container.querySelectorAll('.visual-item.active').forEach(a => a.classList.remove('active'));
       el.classList.add('active');
       if (_callbacks.onVisualSelect) _callbacks.onVisualSelect(el.dataset.id);
+    });
+  });
+
+  container.querySelectorAll('.page-layout-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (_callbacks.onPageLayoutSelect) _callbacks.onPageLayoutSelect(btn.dataset.page);
     });
   });
 }

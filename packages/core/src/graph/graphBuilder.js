@@ -401,7 +401,12 @@ export function buildGraph(parsedModel, parsedReport, enrichments) {
     if (parsedReport.pages) {
       for (const page of parsedReport.pages) {
         const pageId = `page::${page.id}`;
-        nodes.set(pageId, createNode(pageId, page.name, NODE_TYPES.PAGE, { pageId: page.id }));
+        nodes.set(pageId, createNode(pageId, page.name, NODE_TYPES.PAGE, {
+          pageId: page.id,
+          width: page.width || 1280,
+          height: page.height || 720,
+          ordinal: page.order ?? 0,
+        }));
       }
     }
 
@@ -410,7 +415,9 @@ export function buildGraph(parsedModel, parsedReport, enrichments) {
         const visualId = `visual::${visual.pageId}/${visual.id}`;
         nodes.set(visualId, createNode(visualId, visual.title || visual.visualType, NODE_TYPES.VISUAL, {
           visualType: visual.visualType,
-          pageId: visual.pageId
+          pageId: visual.pageId,
+          title: visual.title || '',
+          position: visual.position || null,
         }));
 
         // Visual belongs to page

@@ -20,6 +20,7 @@ import { initMeasurePicker, populateMeasures, selectMeasure } from './ui/measure
 import { initVisualBrowser, populateVisuals, selectVisual } from './ui/visualBrowser.js';
 import { initLineageView, renderLineage, renderVisualLineage, clearLineage } from './ui/lineageView.js';
 import { populateSourceMapping, renderSourceMapping } from './ui/sourceMapping.js';
+import { initPageLayout, renderPageLayout } from './ui/pageLayout.js';
 
 const state = {
   graph: null,
@@ -37,8 +38,9 @@ const state = {
 function init() {
   initToolbar({ onOpenFolder: handleOpenFolder });
   initMeasurePicker({ onSelect: handleMeasureSelect });
-  initVisualBrowser({ onVisualSelect: handleVisualSelect, onMeasureNavigate: handleMeasureSelect });
+  initVisualBrowser({ onVisualSelect: handleVisualSelect, onMeasureNavigate: handleMeasureSelect, onPageLayoutSelect: handlePageLayoutSelect });
   initLineageView({ onMeasureNavigate: handleMeasureSelect, onVisualNavigate: handleVisualSelect });
+  initPageLayout({ onVisualSelect: handleVisualSelect, onBackClick: navigateBack });
 
   const btnLoadModel = document.getElementById('btn-load-model');
   if (btnLoadModel) btnLoadModel.addEventListener('click', handleLoadSemanticModel);
@@ -464,6 +466,45 @@ function handleVisualSelect(visualId, { skipHistory = false } = {}) {
   }
 }
 
+// --- Page Layout Selection ---
+
+function handlePageLayoutSelect(pageName, { skipHistory = false } = {}) {
+  if (!state.graph) return;
+
+  // Exit source map view if active
+  if (state.sourceMapVisible) {
+    state.sourceMapVisible = false;
+    const btn = document.getElementById('btn-source-map');
+    if (btn) btn.classList.remove('active');
+    const sourceMapContainer = document.getElementById('source-map-container');
+    if (sourceMapContainer) sourceMapContainer.classList.add('hidden');
+  }
+
+  // Find page node by matching name or pageId
+  let pageNode = null;
+  for (const node of state.graph.nodes.values()) {
+    if (node.type === 'page' && (node.name === pageName || node.metadata.pageId === pageName)) {
+      pageNode = node;
+      break;
+    }
+  }
+
+  if (!pageNode) {
+    showLineageMessage(`Page not found: ${pageName}`);
+    return;
+  }
+
+  // Push current selection to history before navigating
+  if (!skipHistory && state.currentSelection) {
+    state.navigationHistory.push(state.currentSelection);
+  }
+  state.currentSelection = { type: 'page', id: pageName };
+  updateBackButton();
+
+  renderPageLayout(pageNode, state.graph);
+  updateBackButton();
+}
+
 function showLineageMessage(message) {
   const empty = document.getElementById('lineage-empty');
   const content = document.getElementById('lineage-content');
@@ -506,6 +547,8 @@ function navigateBack() {
     handleMeasureSelect(prev.id, { skipHistory: true });
   } else if (prev.type === 'visual') {
     handleVisualSelect(prev.id, { skipHistory: true });
+  } else if (prev.type === 'page') {
+    handlePageLayoutSelect(prev.id, { skipHistory: true });
   }
   updateBackButton();
 }

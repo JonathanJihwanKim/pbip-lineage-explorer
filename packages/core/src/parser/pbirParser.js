@@ -25,6 +25,8 @@ export function parsePbirReport(visualFiles, pageFiles) {
         name: pageName,
         displayName: config.displayName || config.name || pageName,
         order: config.ordinal ?? config.order ?? pages.length,
+        width: config.width || 1280,
+        height: config.height || 720,
         path,
       });
     } catch (err) {
@@ -143,6 +145,7 @@ export function parseVisualConfig(config, pageName) {
     pageId: pageName,
     title,
     fields,
+    position: config.position || null,
   };
 }
 
