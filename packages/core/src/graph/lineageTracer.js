@@ -55,14 +55,21 @@ function traceVisuals(measureNode, impact, graph) {
     }
 
     // Determine binding type (direct measure vs field parameter)
+    // and look up field parameter display name
     let bindingType = 'direct';
     let fieldParameterTable = '';
+    let fpDisplayName = '';
     const upNeighbors = graph.adjacency.upstream.get(nodeId) || [];
     for (const upId of upNeighbors) {
       const upNode = graph.nodes.get(upId);
       if (upNode && (upNode.enrichment?.type === 'field_parameter' || upNode.metadata?.isFieldParameter)) {
         bindingType = 'fieldParameter';
         fieldParameterTable = upNode.metadata?.table || upNode.name;
+        // Look up display name for this measure in the FP table
+        const displayNames = upNode.metadata?.fpDisplayNames;
+        if (displayNames && displayNames[measureNode.id]) {
+          fpDisplayName = displayNames[measureNode.id];
+        }
         break;
       }
     }
@@ -72,7 +79,7 @@ function traceVisuals(measureNode, impact, graph) {
       visualType: node.metadata?.visualType || node.name,
       title: node.metadata?.title || node.name,
       id: node.id,
-      metricDisplayName: measureNode.name,
+      metricDisplayName: fpDisplayName || measureNode.name,
       metricDaxName: `${measureNode.metadata?.table || ''}.${measureNode.name}`,
       bindingType,
       fieldParameterTable,
@@ -177,12 +184,25 @@ export function traceVisualLineage(visualNodeId, graph) {
     }
   }
 
+  // Build FP display name map from all referenced FP tables
+  const fpDisplayNameMap = new Map();
+  for (const fpTableId of referencedFpTableIds) {
+    const fpTable = graph.nodes.get(fpTableId);
+    const displayNames = fpTable?.metadata?.fpDisplayNames;
+    if (displayNames) {
+      for (const [measureId, displayName] of Object.entries(displayNames)) {
+        fpDisplayNameMap.set(measureId, displayName);
+      }
+    }
+  }
+
   // Trace lineage for direct measures
   const measures = Array.from(directMeasureIds).map(measureId => {
     const node = graph.nodes.get(measureId);
     return {
       measureId,
       measureName: node?.name || measureId,
+      fpDisplayName: fpDisplayNameMap.get(measureId) || '',
       lineage: traceMeasureLineage(measureId, graph),
     };
   });
@@ -195,6 +215,7 @@ export function traceVisualLineage(visualNodeId, graph) {
       return {
         measureId,
         measureName: node?.name || measureId,
+        fpDisplayName: fpDisplayNameMap.get(measureId) || '',
         lineage: traceMeasureLineage(measureId, graph),
       };
     });

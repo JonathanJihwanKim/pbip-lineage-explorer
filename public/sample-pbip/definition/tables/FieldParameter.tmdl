@@ -11,3 +11,11 @@ table 'Sales Metrics'
 			1, [Avg Sales],
 			2, [Total Quantity]
 		)
+	partition 'Sales Metrics' = calculated
+		mode: import
+		source =
+			{
+				("sales_kpi_01", NAMEOF('Sales'[Total Sales]), 0),
+				("sales_kpi_02", NAMEOF('Sales'[Avg Sales]), 1),
+				("sales_kpi_03", NAMEOF('Sales'[Total Quantity]), 2)
+			}

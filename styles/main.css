@@ -659,6 +659,11 @@ button .icon { margin-right: 4px; }
   font-size: 13px; padding: 3px 0;
 }
 
+.fp-display-name {
+  font-size: 11px; color: #e91e63; font-style: italic;
+  margin-left: 4px;
+}
+
 /* --- Structured Summary Tree --- */
 .summary-tree-html {
   background: var(--bg-input);

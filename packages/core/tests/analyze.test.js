@@ -97,6 +97,35 @@ describe('analyze (integration)', () => {
     expect(stats.measures).toBeGreaterThan(0);
     expect(stats.columns).toBeGreaterThan(0);
   });
+
+  it('captures field parameter display names', () => {
+    const modelStructure = identifyProjectStructure(modelFiles);
+    const reportStructure = identifyProjectStructure(reportFiles);
+    const { graph } = analyze({ modelStructure, reportStructure });
+
+    // The Sales Metrics FP table should have display names
+    const fpTable = graph.nodes.get("table::Sales Metrics");
+    expect(fpTable).toBeDefined();
+    expect(fpTable.enrichment?.type).toBe('field_parameter');
+
+    // Check that fpDisplayNames are stored on the table metadata
+    const displayNames = fpTable.metadata?.fpDisplayNames;
+    expect(displayNames).toBeDefined();
+    expect(displayNames["measure::Sales.Total Sales"]).toBe("sales_kpi_01");
+    expect(displayNames["measure::Sales.Avg Sales"]).toBe("sales_kpi_02");
+    expect(displayNames["measure::Sales.Total Quantity"]).toBe("sales_kpi_03");
+  });
+
+  it('includes description in measure metadata', () => {
+    const modelStructure = identifyProjectStructure(modelFiles);
+    const { graph } = analyze({ modelStructure });
+
+    // All measure nodes should have description field in metadata (even if empty)
+    const measures = [...graph.nodes.values()].filter(n => n.type === 'measure');
+    for (const m of measures) {
+      expect(m.metadata).toHaveProperty('description');
+    }
+  });
 });
 
 /**
