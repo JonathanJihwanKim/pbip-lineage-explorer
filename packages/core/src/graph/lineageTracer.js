@@ -314,8 +314,6 @@ function buildSourceTable(measureChain, graph) {
       const tableNodeId = `table::${col.table}`;
       const tableNode = graph.nodes.get(tableNodeId);
 
-      // Find PQ expression for this table
-      let pqExpression = '';
       let srcTable = col.sourceTablePath || '';
       let srcColumn = col.sourceTableFull || col.sourceColumn || col.name;
 
@@ -325,7 +323,6 @@ function buildSourceTable(measureChain, graph) {
         for (const upId of tableUp) {
           const upNode = graph.nodes.get(upId);
           if (upNode && upNode.type === 'expression') {
-            pqExpression = upNode.name;
             if (upNode.metadata?.dataSource?.sourceTable && !srcTable) {
               const exprDs = upNode.metadata.dataSource;
               const exprFullTable = exprDs.schema
@@ -354,7 +351,6 @@ function buildSourceTable(measureChain, graph) {
         pbiColumn: col.name,
         sourceColumn: col.sourceColumn || col.name,
         originalSourceColumn: col.originalSourceColumn || '',
-        pqExpression,
         sourceTable: srcTable,
         sourceColumnFull: srcColumn,
         renamed: col.wasRenamed,
@@ -401,7 +397,6 @@ function buildSummaryTrees(measureNode, visuals, measureChain, sourceTable, grap
       const key = `${col.table}.${col.name}`;
       const source = colSourceMap.get(key);
       let colLine = `${prefix}    ${col.table}[${col.name}]`;
-      if (source?.pqExpression) colLine += ` -> PQ: ${source.pqExpression}`;
       if (source?.sourceTable) colLine += ` -> Source: ${source.sourceTable}.${source.sourceColumnFull}`;
       if (source?.renamed) colLine += ' (renamed)';
       lines.push(colLine);

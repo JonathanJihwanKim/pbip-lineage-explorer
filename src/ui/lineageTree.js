@@ -151,32 +151,7 @@ function addChainChildren(node, chain, sourceMap, graph, visited) {
       children: [],
     };
 
-    // Add PQ expression node if available
-    if (source?.pqExpression) {
-      const exprNode = {
-        name: source.pqExpression,
-        layer: 5,
-        layerLabel: LAYER_LABELS[5],
-        type: 'expression',
-        detail: '',
-        children: [],
-      };
-
-      // Add source node if available
-      if (source.sourceTablePath) {
-        exprNode.children.push({
-          name: source.sourceTablePath,
-          layer: 6,
-          layerLabel: LAYER_LABELS[6],
-          type: 'source',
-          detail: source.sourceTableFull || '',
-          children: [],
-        });
-      }
-
-      colNode.children.push(exprNode);
-    } else if (source?.sourceTablePath) {
-      // Direct source without PQ expression
+    if (source?.sourceTablePath) {
       colNode.children.push({
         name: source.sourceTablePath,
         layer: 6,

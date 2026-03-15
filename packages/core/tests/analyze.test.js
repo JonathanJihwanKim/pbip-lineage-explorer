@@ -160,7 +160,6 @@ describe('analyze (integration)', () => {
     expect(amountRow.sourceTable).toContain('fact_sales');
     expect(amountRow.originalSourceColumn).toBe('sale_amount');
     expect(amountRow.renamed).toBe(true);
-    expect(amountRow.pqExpression).toBe('sales_src');
   });
 });
 

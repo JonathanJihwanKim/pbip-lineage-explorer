@@ -309,7 +309,7 @@ function renderSourceTableSection(sourceTable) {
   }
 
   html += '<div class="trace-table-wrapper"><table class="trace-table">';
-  html += '<thead><tr><th>DAX Ref</th><th>PBI Table</th><th>PBI Column</th><th>Source Column (PQ)</th><th>Original Source Column</th><th>Rename Chain</th><th>PQ Expression</th><th>Source Table</th><th>Source Column (Full)</th></tr></thead>';
+  html += '<thead><tr><th>DAX Ref</th><th>PBI Table</th><th>PBI Column</th><th>Source Column (PQ)</th><th>Original Source Column</th><th>Rename Chain</th><th>Source Table</th><th>Source Column (Full)</th></tr></thead>';
   html += '<tbody>';
   for (const row of sourceTable) {
     const rowClass = row.renamed ? ' class="renamed-row"' : '';
@@ -324,7 +324,6 @@ function renderSourceTableSection(sourceTable) {
     } else {
       html += `<td></td>`;
     }
-    html += `<td>${esc(row.pqExpression)}</td>`;
     html += `<td>${esc(row.sourceTable)}</td>`;
     html += `<td>${esc(row.sourceColumnFull)}</td>`;
     html += `</tr>`;
@@ -444,16 +443,8 @@ function renderSummaryChainNode(chain, depth, colSourceMap) {
     if (col.wasRenamed) html += ` <span class="renamed-badge">renamed</span>`;
     html += `</div>`;
 
-    if (source?.pqExpression) {
-      html += `<div class="summary-node layer-expression" style="margin-left:${colIndent + 20}px">`;
-      html += `<span class="layer-label">L5</span>`;
-      html += `<span class="summary-dot" style="background:#795548"></span>`;
-      html += `<span class="summary-node-name">PQ: ${esc(source.pqExpression)}</span>`;
-      html += `</div>`;
-    }
-
     if (source?.sourceTable) {
-      html += `<div class="summary-node layer-source" style="margin-left:${colIndent + 40}px">`;
+      html += `<div class="summary-node layer-source" style="margin-left:${colIndent + 20}px">`;
       html += `<span class="layer-label">L6</span>`;
       html += `<span class="summary-dot" style="background:#607d8b"></span>`;
       html += `<span class="summary-node-name">${esc(source.sourceTable)}.${esc(source.sourceColumnFull)}</span>`;
