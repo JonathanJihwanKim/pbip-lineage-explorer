@@ -257,6 +257,7 @@ export function buildGraph(parsedModel, parsedReport, enrichments) {
           nodes.set(exprId, createNode(exprId, expr.name, NODE_TYPES.EXPRESSION, {
             mExpression: expr.mExpression,
           }));
+          // Only add non-parameter expressions to the map used for partition linking
           expressionMap.set(expr.name, expr);
 
           // Try to extract data source from the expression
@@ -309,10 +310,49 @@ export function buildGraph(parsedModel, parsedReport, enrichments) {
         const ds = extractMDataSource(resolvedExpr);
 
         // Check if partition references a named expression from expressions.tmdl
-        const exprRefMatch = partition.sourceExpression.match(/^\s*(\w[\w_]*)\s*$/);
-        const linkedExprName = exprRefMatch ? exprRefMatch[1] : null;
-        const linkedExpr = linkedExprName && expressionMap.has(linkedExprName)
-          ? expressionMap.get(linkedExprName) : null;
+        // Could be a simple reference like "expr_name" or M code like "let Source = expr_name in ..."
+        const trimmedSource = partition.sourceExpression.trim();
+        let linkedExprName = null;
+        let linkedExpr = null;
+
+        // Pattern 1: Entire source is a single expression name
+        const simpleRefMatch = trimmedSource.match(/^(\w+)$/);
+        if (simpleRefMatch && expressionMap.has(simpleRefMatch[1])) {
+          linkedExprName = simpleRefMatch[1];
+          linkedExpr = expressionMap.get(linkedExprName);
+        }
+
+        // Pattern 2: M code references a known expression (e.g., let Source = expr_name)
+        // Prefer expressions used in Source= assignment; skip parameter expressions
+        if (!linkedExpr) {
+          let fallbackExprName = null;
+          let fallbackExpr = null;
+          for (const [exprName, exprObj] of expressionMap) {
+            // Skip parameter-kind expressions (RangeStart, RangeEnd, etc.)
+            if (exprObj.kind === 'parameter') continue;
+            // Match as a standalone identifier (not inside quotes)
+            const escaped = exprName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const refRegex = new RegExp('(?<!["\'\'\\w])' + escaped + '(?!["\'\'\\w])');
+            if (refRegex.test(trimmedSource)) {
+              // Prefer Source= or := assignment pattern
+              const assignRegex = new RegExp('(?:Source\\s*=|:=)\\s*' + escaped + '\\b');
+              if (assignRegex.test(trimmedSource)) {
+                linkedExprName = exprName;
+                linkedExpr = exprObj;
+                break;
+              }
+              // Keep as fallback if no assignment match yet
+              if (!fallbackExprName) {
+                fallbackExprName = exprName;
+                fallbackExpr = exprObj;
+              }
+            }
+          }
+          if (!linkedExpr && fallbackExprName) {
+            linkedExprName = fallbackExprName;
+            linkedExpr = fallbackExpr;
+          }
+        }
 
         // If no direct data source, try to resolve from the linked expression
         let effectiveDs = ds;
@@ -390,8 +430,8 @@ export function buildGraph(parsedModel, parsedReport, enrichments) {
       let ds = tableNode?.metadata?.dataSource;
       let renameMap = tableNode?.metadata?.renameMap || {};
 
-      if (!ds) {
-        // Check if table links to an expression node that has data source info
+      if (!ds || Object.keys(renameMap).length === 0) {
+        // Check if table links to an expression node that has data source info or rename maps
         const tableUp = (function buildAdj() {
           const up = [];
           for (const edge of edges) {
@@ -403,9 +443,15 @@ export function buildGraph(parsedModel, parsedReport, enrichments) {
         })();
         for (const upId of tableUp) {
           const upNode = nodes.get(upId);
-          if (upNode?.metadata?.dataSource) {
+          if (!ds && upNode?.metadata?.dataSource) {
             ds = upNode.metadata.dataSource;
-            break;
+          }
+          // Also extract rename map from expression M code if not already found
+          if (Object.keys(renameMap).length === 0 && upNode?.type === 'expression' && upNode.metadata?.mExpression) {
+            const exprRenames = extractRenameColumns(upNode.metadata.mExpression);
+            if (exprRenames.size > 0) {
+              renameMap = Object.fromEntries(exprRenames);
+            }
           }
         }
       }
@@ -430,8 +476,11 @@ export function buildGraph(parsedModel, parsedReport, enrichments) {
           const fullTable = ds.schema
             ? `${ds.schema}.${ds.sourceTable}`
             : ds.sourceTable;
-          colNode.metadata.sourceTableFull = `${fullTable}.${originalCol}`;
-          colNode.metadata.sourceTablePath = fullTable;
+          const fullTableWithDb = ds.database
+            ? `${ds.database}.${fullTable}`
+            : fullTable;
+          colNode.metadata.sourceTableFull = `${fullTableWithDb}.${originalCol}`;
+          colNode.metadata.sourceTablePath = fullTableWithDb;
         }
       }
     }

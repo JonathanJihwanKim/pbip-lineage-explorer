@@ -28,3 +28,6 @@ table Sales
 		formatString: #,##0
 	measure 'Unused Metric' = COUNTROWS(Sales) * 0
 		formatString: #,##0
+	partition Sales = m
+		mode: import
+		source = sales_src

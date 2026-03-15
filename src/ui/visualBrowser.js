@@ -143,7 +143,7 @@ function renderList(visuals) {
 
   let html = '';
   for (const [page, items] of groups) {
-    html += `<details class="visual-group" open>`;
+    html += `<details class="visual-group">`;
     if (items.length === 0) {
       html += `<summary class="visual-group-header">${esc(page)} <span class="measure-group-count empty-page">(empty)</span></summary>`;
     } else {
