@@ -412,9 +412,9 @@ function handleMeasureSelect(measureId, { skipHistory = false } = {}) {
     renderLineage(lineage, node.name, state.graph);
     selectMeasure(measureId);
 
-    // Sponsor toast after 10th measure selection
+    // Sponsor toast after 5th measure selection
     state.measureSelectCount++;
-    if (state.measureSelectCount === 10) {
+    if (state.measureSelectCount === 5) {
       showSponsorToast();
     }
   } catch (err) {

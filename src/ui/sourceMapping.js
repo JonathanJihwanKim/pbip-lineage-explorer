@@ -100,6 +100,8 @@ export function renderSourceMapping(container) {
   // Table
   html += renderTable(_rows);
 
+  html += `<div class="sponsor-footer">Built with <span class="sponsor-heart">\u2665</span> by Jihwan Kim \u00b7 <a href="https://github.com/sponsors/JonathanJihwanKim" target="_blank" rel="noopener">Sponsor</a></div>`;
+
   container.innerHTML = html;
 
   // Bind events

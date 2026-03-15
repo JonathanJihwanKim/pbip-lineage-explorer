@@ -145,9 +145,9 @@ function renderList(visuals) {
   for (const [page, items] of groups) {
     html += `<details class="visual-group" open>`;
     if (items.length === 0) {
-      html += `<summary class="visual-group-header"><span class="visual-group-name">${esc(page)} <span class="measure-group-count empty-page">(empty)</span></span></summary>`;
+      html += `<summary class="visual-group-header">${esc(page)} <span class="measure-group-count empty-page">(empty)</span></summary>`;
     } else {
-      html += `<summary class="visual-group-header"><span class="visual-group-name">${esc(page)} <span class="measure-group-count">(${items.length})</span></span>`;
+      html += `<summary class="visual-group-header">${esc(page)} <span class="measure-group-count">(${items.length})</span>`;
       html += `<button class="page-layout-btn" data-page="${esc(page)}" aria-label="View page layout"><svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><rect x="1" y="1" width="5" height="5" rx="1"/><rect x="8" y="1" width="5" height="5" rx="1"/><rect x="1" y="8" width="5" height="5" rx="1"/><rect x="8" y="8" width="5" height="5" rx="1"/></svg></button>`;
       html += `</summary>`;
     }
