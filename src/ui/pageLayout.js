@@ -96,7 +96,9 @@ export function renderPageLayout(pageNode, graph) {
       id: node.id,
       title: node.metadata.title || node.name || '',
       type: node.metadata.visualType || 'unknown',
-      position: node.metadata.position,
+      position: node.metadata.position ? { ...node.metadata.position } : null,
+      isHidden: node.metadata.isHidden || false,
+      parentGroupName: node.metadata.parentGroupName || null,
       measureCount: totalMeasureCount,
       columnCount,
       measures,
@@ -106,8 +108,47 @@ export function renderPageLayout(pageNode, graph) {
     });
   }
 
-  const positioned = visuals.filter(v => v.position);
-  const unpositioned = visuals.filter(v => !v.position);
+  // Resolve group-relative positions: children store positions relative to their
+  // parent group. Groups can be nested, so we recursively resolve offsets.
+  const groupMap = new Map(); // groupName -> { position, parentGroupName }
+  for (const v of visuals) {
+    if (v.type === 'group') {
+      const groupName = v.id.split('/').pop();
+      groupMap.set(groupName, { position: v.position, parentGroupName: v.parentGroupName });
+    }
+  }
+
+  // Compute absolute offset for a group by walking up the chain
+  function getGroupAbsoluteOffset(groupName, visited = new Set()) {
+    if (!groupName || visited.has(groupName)) return { x: 0, y: 0 };
+    visited.add(groupName);
+    const group = groupMap.get(groupName);
+    if (!group || !group.position) return { x: 0, y: 0 };
+    const parentOffset = getGroupAbsoluteOffset(group.parentGroupName, visited);
+    return {
+      x: (group.position.x || 0) + parentOffset.x,
+      y: (group.position.y || 0) + parentOffset.y,
+    };
+  }
+
+  for (const v of visuals) {
+    if (v.parentGroupName && v.position) {
+      const offset = getGroupAbsoluteOffset(v.parentGroupName);
+      v.position = {
+        ...v.position,
+        x: (v.position.x || 0) + offset.x,
+        y: (v.position.y || 0) + offset.y,
+      };
+    }
+  }
+
+  // Filter out hidden visuals and group containers (groups are just wrappers)
+  const visible = visuals.filter(v => !v.isHidden && v.type !== 'group');
+  const positioned = visible.filter(v => v.position);
+  const unpositioned = visible.filter(v => !v.position);
+
+  // Sort positioned visuals by z-order for proper stacking
+  positioned.sort((a, b) => (a.position.z || 0) - (b.position.z || 0));
 
   // Render canvas into #lineage-tree-container
   if (treeContainer) {
@@ -120,11 +161,12 @@ export function renderPageLayout(pageNode, graph) {
       const top = (p.y / pageH * 100).toFixed(3);
       const width = (p.width / pageW * 100).toFixed(3);
       const height = (p.height / pageH * 100).toFixed(3);
+      const zIndex = p.z != null ? Math.max(0, Math.floor(p.z / 100)) : 'auto';
       const cat = typeCategory(v.type);
       const label = v.title || shortType(v.type);
 
       canvasHtml += `<div class="page-layout-visual" data-id="${esc(v.id)}" data-category="${cat}" `;
-      canvasHtml += `style="left:${left}%;top:${top}%;width:${width}%;height:${height}%" `;
+      canvasHtml += `style="left:${left}%;top:${top}%;width:${width}%;height:${height}%;z-index:${zIndex}" `;
       canvasHtml += `title="">`;
       canvasHtml += `<span class="page-layout-visual-badge" data-category="${cat}">${esc(shortType(v.type))}</span>`;
       canvasHtml += `<span class="page-layout-visual-title">${esc(label)}</span>`;
@@ -144,7 +186,7 @@ export function renderPageLayout(pageNode, graph) {
   // Render unpositioned visuals + stats into #lineage-sections
   if (sectionsContainer) {
     let html = '';
-    html += `<div class="page-layout-stats">${visuals.length} visual${visuals.length !== 1 ? 's' : ''}</div>`;
+    html += `<div class="page-layout-stats">${visible.length} visual${visible.length !== 1 ? 's' : ''}${visuals.length !== visible.length ? ` (${visuals.length - visible.length} hidden)` : ''}</div>`;
 
     if (unpositioned.length > 0) {
       html += `<div class="page-layout-unpositioned">`;

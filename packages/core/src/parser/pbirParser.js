@@ -25,8 +25,8 @@ export function parsePbirReport(visualFiles, pageFiles) {
         name: pageName,
         displayName: config.displayName || config.name || pageName,
         order: config.ordinal ?? config.order ?? pages.length,
-        width: config.width || 1280,
-        height: config.height || 720,
+        width: config.width || config.defaultSize?.width || 1280,
+        height: config.height || config.defaultSize?.height || 720,
         path,
       });
     } catch (err) {
@@ -99,6 +99,8 @@ function extractPageIdFromPath(path) {
   return '';
 }
 
+
+
 /**
  * Parse a single visual configuration JSON file.
  * @param {object} config - The parsed JSON config for a visual.
@@ -109,7 +111,9 @@ export function parseVisualConfig(config, pageName) {
   const visual = config.visual || config;
 
   const id = visual.id || config.id || config.name || '';
-  const visualType = visual.visualType || visual.type || config.visualType || 'unknown';
+  // Detect group visuals via the visualGroup property
+  const isGroup = !!config.visualGroup;
+  const visualType = isGroup ? 'group' : (visual.visualType || visual.type || config.visualType || 'unknown');
 
   // Extract title from various possible locations
   let title = '';
@@ -125,6 +129,8 @@ export function parseVisualConfig(config, pageName) {
     const titleArr = visual.vcObjects.title;
     if (Array.isArray(titleArr) && titleArr[0]?.properties?.text?.expr?.Literal?.Value) {
       title = titleArr[0].properties.text.expr.Literal.Value.replace(/^'|'$/g, '');
+    } else if (titleArr?.properties?.text?.expr?.Literal?.Value) {
+      title = titleArr.properties.text.expr.Literal.Value.replace(/^'|'$/g, '');
     }
   }
   // PBIR format: visualContainerObjects.title
@@ -132,10 +138,23 @@ export function parseVisualConfig(config, pageName) {
     const titleArr = visual.visualContainerObjects.title;
     if (Array.isArray(titleArr) && titleArr[0]?.properties?.text?.expr?.Literal?.Value) {
       title = titleArr[0].properties.text.expr.Literal.Value.replace(/^'|'$/g, '');
+    } else if (titleArr?.properties?.text?.expr?.Literal?.Value) {
+      title = titleArr.properties.text.expr.Literal.Value.replace(/^'|'$/g, '');
     }
   }
 
   const fields = extractFieldReferences(visual, config);
+
+  // Extract hidden state
+  const isHidden = config.isHidden === true || visual.isHidden === true;
+
+  // parentGroupName is stored directly in the visual config JSON
+  const parentGroupName = config.parentGroupName || null;
+
+  // For group visuals, extract the display name
+  if (isGroup && !title && config.visualGroup?.displayName) {
+    title = config.visualGroup.displayName;
+  }
 
   return {
     id,
@@ -146,6 +165,8 @@ export function parseVisualConfig(config, pageName) {
     title,
     fields,
     position: config.position || null,
+    isHidden,
+    parentGroupName,
   };
 }
 
