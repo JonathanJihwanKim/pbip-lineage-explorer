@@ -243,6 +243,7 @@ function renderChainNode(chain, depth) {
   html += `<span class="chain-dot" style="background:${NODE_COLORS.measure}"></span>`;
   html += `<strong class="chain-name clickable" data-id="${esc(chain.id)}">[${esc(chain.name)}]</strong>`;
   if (chain.table) html += ` <span class="chain-table">(${esc(chain.table)})</span>`;
+  if (chain.description) html += ` <span class="chain-description">${esc(chain.description)}</span>`;
   // Copy DAX button
   if (chain.expression) {
     html += ` <button class="btn-copy-dax" data-dax="${esc(chain.expression)}" title="Copy DAX">&#128203;</button>`;

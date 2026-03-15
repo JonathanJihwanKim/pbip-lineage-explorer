@@ -242,6 +242,7 @@ function buildMeasureChain(measureNodeId, graph, visited) {
     name: node.name,
     table: node.metadata?.table || '',
     expression: node.metadata?.expression || '',
+    description: node.metadata?.description || '',
     children: [],  // sub-measures
     columns: [],   // leaf column references
   };
@@ -304,8 +305,14 @@ function buildSourceTable(measureChain, graph) {
           const upNode = graph.nodes.get(upId);
           if (upNode && upNode.type === 'expression') {
             pqExpression = upNode.name;
-            if (upNode.metadata?.dataSource?.sourceTable) {
-              srcTable = srcTable || `${upNode.metadata.dataSource.database || ''}.${upNode.metadata.dataSource.sourceTable}`;
+            if (upNode.metadata?.dataSource?.sourceTable && !srcTable) {
+              const exprDs = upNode.metadata.dataSource;
+              const exprFullTable = exprDs.schema
+                ? `${exprDs.schema}.${exprDs.sourceTable}`
+                : exprDs.sourceTable;
+              srcTable = exprDs.database
+                ? `${exprDs.database}.${exprFullTable}`
+                : exprFullTable;
             }
           } else if (upNode && upNode.type === 'source') {
             if (!srcTable && upNode.metadata?.database) {
@@ -313,6 +320,11 @@ function buildSourceTable(measureChain, graph) {
             }
           }
         }
+      }
+
+      // If srcColumn only has the column name (no table path), prepend source table
+      if (srcTable && srcColumn && !srcColumn.includes('.')) {
+        srcColumn = `${srcTable}.${srcColumn}`;
       }
 
       rows.push({

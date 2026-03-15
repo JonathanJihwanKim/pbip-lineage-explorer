@@ -443,6 +443,11 @@ button .icon { margin-right: 4px; }
   font-size: 11px; color: var(--text-muted);
 }
 
+.chain-description {
+  font-size: 11px; color: var(--text-secondary); font-style: italic;
+  margin-left: 4px;
+}
+
 .chain-dax {
   background: var(--bg-input); padding: 6px 8px;
   border-radius: 4px; margin: 4px 0 4px 14px;
@@ -497,7 +502,8 @@ button .icon { margin-right: 4px; }
 .overlay-card {
   background: var(--bg-card); border: 1px solid var(--border-color);
   border-radius: 12px; padding: 40px 48px;
-  max-width: 540px; text-align: center;
+  max-width: 540px; max-height: 85vh; text-align: center;
+  display: flex; flex-direction: column;
 }
 .overlay-card h1 { font-size: 24px; margin-bottom: 12px; }
 .overlay-card h2 { font-size: 20px; margin-bottom: 12px; }
@@ -512,6 +518,8 @@ button .icon { margin-right: 4px; }
 .report-picker-list {
   margin-top: 16px;
   text-align: left;
+  max-height: 50vh;
+  overflow-y: auto;
 }
 
 .report-picker-item {

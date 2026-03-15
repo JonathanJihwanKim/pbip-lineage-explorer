@@ -159,7 +159,8 @@ export function buildGraph(parsedModel, parsedReport, enrichments) {
           const measureId = `measure::${table.name}.${measure.name}`;
           nodes.set(measureId, createNode(measureId, measure.name, NODE_TYPES.MEASURE, {
             table: table.name,
-            expression: measure.expression
+            expression: measure.expression,
+            description: measure.description || ''
           }));
         }
       }
@@ -366,10 +367,32 @@ export function buildGraph(parsedModel, parsedReport, enrichments) {
     for (const table of parsedModel.tables) {
       const tableId = `table::${table.name}`;
       const tableNode = nodes.get(tableId);
-      if (!tableNode?.metadata?.dataSource) continue;
 
-      const renameMap = tableNode.metadata.renameMap || {};
-      const ds = tableNode.metadata.dataSource;
+      // Get data source from the table directly, or from a linked expression node
+      let ds = tableNode?.metadata?.dataSource;
+      let renameMap = tableNode?.metadata?.renameMap || {};
+
+      if (!ds) {
+        // Check if table links to an expression node that has data source info
+        const tableUp = (function buildAdj() {
+          const up = [];
+          for (const edge of edges) {
+            if (edge.source === tableId && (edge.type === EDGE_TYPES.TABLE_TO_EXPRESSION || edge.type === EDGE_TYPES.TABLE_TO_SOURCE)) {
+              up.push(edge.target);
+            }
+          }
+          return up;
+        })();
+        for (const upId of tableUp) {
+          const upNode = nodes.get(upId);
+          if (upNode?.metadata?.dataSource) {
+            ds = upNode.metadata.dataSource;
+            break;
+          }
+        }
+      }
+
+      if (!ds) continue;
 
       for (const col of (table.columns || [])) {
         const colId = `column::${table.name}.${col.name}`;
