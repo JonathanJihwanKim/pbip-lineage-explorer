@@ -8,7 +8,7 @@ import * as d3 from 'd3';
 import { LAYER_COLORS, LAYER_LABELS } from '@pbip-lineage/core/utils/constants.js';
 
 const NODE_WIDTH = 200;
-const NODE_HEIGHT = 36;
+const NODE_HEIGHT = 40;
 const VERTICAL_SPACING = 52;
 const HORIZONTAL_SPACING = 260;
 
@@ -232,8 +232,8 @@ export function renderLineageTree(container, treeData) {
     .attr('d', linkGenerator)
     .attr('fill', 'none')
     .attr('stroke', d => getLayerColor(d.target.data.type))
-    .attr('stroke-width', 2)
-    .attr('stroke-opacity', 0.5);
+    .attr('stroke-width', 2.5)
+    .attr('stroke-opacity', 0.65);
 
   // Draw nodes
   const nodes = g.selectAll('.tree-node')
@@ -251,7 +251,7 @@ export function renderLineageTree(container, treeData) {
     .attr('rx', 6)
     .attr('ry', 6)
     .attr('fill', d => getLayerColor(d.data.type))
-    .attr('fill-opacity', 0.15)
+    .attr('fill-opacity', 0.22)
     .attr('stroke', d => getLayerColor(d.data.type))
     .attr('stroke-width', 1.5);
 
@@ -268,8 +268,8 @@ export function renderLineageTree(container, treeData) {
     .attr('y', -3)
     .attr('class', 'tree-node-name')
     .text(d => truncateText(d.data.name, 22))
-    .attr('fill', '#e0e0e0')
-    .attr('font-size', '12px')
+    .attr('fill', '#ececec')
+    .attr('font-size', '13px')
     .attr('font-weight', 600)
     .attr('dominant-baseline', 'auto');
 
@@ -279,8 +279,8 @@ export function renderLineageTree(container, treeData) {
     .attr('y', 11)
     .attr('class', 'tree-node-layer')
     .text(d => d.data.layerLabel || '')
-    .attr('fill', '#8888aa')
-    .attr('font-size', '9px')
+    .attr('fill', '#9999bb')
+    .attr('font-size', '10px')
     .attr('dominant-baseline', 'auto');
 
   // Tooltips
@@ -343,7 +343,7 @@ function addLegend(svg, width) {
     .attr('x', -8)
     .attr('y', -8)
     .attr('width', 168)
-    .attr('height', legendData.length * 18 + 16)
+    .attr('height', legendData.length * 20 + 16)
     .attr('rx', 6)
     .attr('fill', 'rgba(22, 33, 62, 0.92)')
     .attr('stroke', '#2a2a4a');
@@ -352,7 +352,7 @@ function addLegend(svg, width) {
     .data(legendData)
     .join('g')
     .attr('class', 'legend-entry')
-    .attr('transform', (d, i) => `translate(0, ${i * 18})`);
+    .attr('transform', (d, i) => `translate(0, ${i * 20})`);
 
   entries.append('circle')
     .attr('cx', 6)
@@ -364,6 +364,6 @@ function addLegend(svg, width) {
     .attr('x', 16)
     .attr('y', 10)
     .text(d => `L${d.layer}: ${d.label}`)
-    .attr('fill', '#a0a0b0')
-    .attr('font-size', '10px');
+    .attr('fill', '#b0b0c0')
+    .attr('font-size', '11px');
 }
