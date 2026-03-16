@@ -222,6 +222,7 @@ export function renderPageLayout(pageNode, graph) {
   allItems.forEach(el => {
     el.addEventListener('click', (e) => {
       e.stopPropagation();
+      tooltip.classList.add('hidden');
       if (_callbacks.onVisualSelect) _callbacks.onVisualSelect(el.dataset.id);
     });
 

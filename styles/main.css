@@ -663,6 +663,12 @@ button .icon { margin-right: 4px; }
   font-size: 11px; color: #e91e63; font-style: italic;
   margin-left: 4px;
 }
+.fp-display-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-style: italic;
+  margin-left: 4px;
+}
 
 /* --- Structured Summary Tree --- */
 .summary-tree-html {
@@ -1143,6 +1149,7 @@ mark {
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
   color: var(--text-primary);
 }
+.page-layout-tooltip.hidden { display: none; }
 
 .page-layout-tooltip .tip-title {
   font-weight: 600;

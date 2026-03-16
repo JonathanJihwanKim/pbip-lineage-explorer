@@ -183,6 +183,8 @@ function renderList(visuals) {
     btn.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
+      const tip = document.getElementById('sidebar-tooltip');
+      if (tip) tip.classList.add('hidden');
       if (_callbacks.onPageLayoutSelect) _callbacks.onPageLayoutSelect(btn.dataset.page);
     });
 

@@ -144,7 +144,7 @@ export function renderVisualLineage(visualLineage, graph) {
         html += `<summary class="measure-accordion-header">`;
         html += `<span class="chain-dot" style="background:${NODE_COLORS.measure};display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;"></span>`;
         html += `[${esc(m.measureName)}]`;
-        if (m.fpDisplayName) html += ` <span class="fp-display-name">${esc(m.fpDisplayName)}</span>`;
+        if (m.fpDisplayName && m.fpDisplayName !== m.measureName) html += ` <span class="fp-display-label">displayed as</span> <span class="fp-display-name">${esc(m.fpDisplayName)}</span>`;
         if (isFp && !isDirect) html += ` <span class="visual-type-badge" style="background:rgba(255,152,0,0.2);color:#ff9800;margin-left:6px">FP</span>`;
         if (isDirect) html += ` <span class="visual-type-badge" style="background:rgba(76,175,80,0.2);color:#4caf50;margin-left:6px">active</span>`;
         html += `</summary>`;
