@@ -4,10 +4,12 @@
  */
 
 import { NODE_COLORS } from '@pbip-lineage/core/utils/constants.js';
-import { buildTreeData, buildVisualTreeData, renderLineageTree, destroyTree } from './lineageTree.js';
+import { buildTreeData, buildVisualTreeData, renderLineageTree, destroyTree, exportTreeAsSvg, exportTreeAsPng } from './lineageTree.js';
+import { openImpactPanel } from './impactPanel.js';
 
 let _onMeasureNavigate = null;
 let _onVisualNavigate = null;
+let _currentGraph = null;
 
 /**
  * Initialize the lineage view.
@@ -31,9 +33,14 @@ export function renderLineage(lineage, measureName, graph) {
   const sectionsContainer = document.getElementById('lineage-sections');
 
   if (!content) return;
+  _currentGraph = graph;
 
   if (empty) empty.classList.add('hidden');
   content.classList.remove('hidden');
+
+  // Check for circular references
+  const hasCircular = chainHasCircularRef(lineage.measureChain);
+
   if (titleEl) {
     titleEl.textContent = measureName;
     titleEl.removeAttribute('data-subtitle');
@@ -44,12 +51,16 @@ export function renderLineage(lineage, measureName, graph) {
   if (treeContainer) {
     const treeData = buildTreeData(lineage, graph);
     renderLineageTree(treeContainer, treeData);
+    addExportToolbar(treeContainer, measureName);
   }
 
   if (sectionsContainer) {
     let html = '';
+    if (hasCircular) {
+      html += '<div class="circular-warning">Circular reference detected in this dependency chain. Some measures reference each other, which may cause calculation issues.</div>';
+    }
     html += renderVisualsSection(lineage.visuals);
-    html += renderMeasureChainSection(lineage.measureChain, lineage.summaryTrees);
+    html += renderMeasureChainSection(lineage.measureChain, lineage.summaryTrees, lineage.sourceTable);
     html += renderSourceTableSection(lineage.sourceTable);
     html += renderSummarySection(lineage.summaryTrees, lineage.measureChain, lineage.sourceTable);
     sectionsContainer.innerHTML = html;
@@ -70,6 +81,7 @@ export function renderVisualLineage(visualLineage, graph) {
   const sectionsContainer = document.getElementById('lineage-sections');
 
   if (!content) return;
+  _currentGraph = graph;
 
   if (empty) empty.classList.add('hidden');
   content.classList.remove('hidden');
@@ -94,6 +106,7 @@ export function renderVisualLineage(visualLineage, graph) {
     const treeData = buildVisualTreeData(visual, allMeasures, graph);
     if (treeData) {
       renderLineageTree(treeContainer, treeData);
+      addExportToolbar(treeContainer, visual.title || visual.type || 'visual');
     } else {
       destroyTree(treeContainer);
     }
@@ -131,7 +144,7 @@ export function renderVisualLineage(visualLineage, graph) {
       // Single direct measure (no FP): show DAX chain + source lineage directly
       const m = allMeasures[0];
       if (m.lineage) {
-        html += renderMeasureChainSection(m.lineage.measureChain, m.lineage.summaryTrees);
+        html += renderMeasureChainSection(m.lineage.measureChain, m.lineage.summaryTrees, m.lineage.sourceTable);
         html += renderSourceTableSection(m.lineage.sourceTable);
         html += renderVisualSummarySection(visual, m.lineage.measureChain, m.lineage.sourceTable);
       }
@@ -150,7 +163,7 @@ export function renderVisualLineage(visualLineage, graph) {
         html += `</summary>`;
         html += `<div class="measure-accordion-body">`;
         if (m.lineage) {
-          html += renderMeasureChainSection(m.lineage.measureChain, m.lineage.summaryTrees);
+          html += renderMeasureChainSection(m.lineage.measureChain, m.lineage.summaryTrees, m.lineage.sourceTable);
           html += renderSourceTableSection(m.lineage.sourceTable);
           html += renderVisualSummarySection(visual, m.lineage.measureChain, m.lineage.sourceTable);
         }
@@ -219,18 +232,23 @@ function renderVisualsSection(visuals) {
 
 // --- Section 2: DAX Measure Chain ---
 
-function renderMeasureChainSection(chain, summaryTrees) {
-  let html = '<div class="lineage-section">';
-  html += '<h3>2. DAX Measure Chain';
+function renderMeasureChainSection(chain, summaryTrees, sourceTable) {
+  // Count measures and columns in the chain
+  const counts = countChainNodes(chain);
+  const sourceCount = sourceTable ? sourceTable.length : 0;
+
+  let html = '<details class="lineage-section lineage-section-collapsible" open>';
+  html += '<summary class="lineage-section-header"><h3>2. DAX Measure Chain';
+  html += ` <span class="section-summary-count">${counts.measures} measure${counts.measures !== 1 ? 's' : ''}, ${counts.columns} column${counts.columns !== 1 ? 's' : ''}</span>`;
   // Copy lineage button
   if (summaryTrees && summaryTrees.length > 0) {
     const copyText = esc(summaryTrees.join('\n\n'));
     html += ` <button class="btn-copy-lineage" data-lineage-text="${copyText}" title="Copy lineage as text">Copy</button>`;
   }
-  html += '</h3>';
+  html += '</h3></summary>';
   html += '<div class="measure-tree">';
   html += renderChainNode(chain, 0);
-  html += '</div></div>';
+  html += '</div></details>';
   return html;
 }
 
@@ -245,10 +263,13 @@ function renderChainNode(chain, depth) {
   html += `<strong class="chain-name clickable" data-id="${esc(chain.id)}">[${esc(chain.name)}]</strong>`;
   if (chain.table) html += ` <span class="chain-table">(${esc(chain.table)})</span>`;
   if (chain.description) html += ` <span class="chain-description">${esc(chain.description)}</span>`;
+  if (chain.expression === '(circular reference)') html += ` <span class="circular-badge">circular</span>`;
   // Copy DAX button
-  if (chain.expression) {
+  if (chain.expression && chain.expression !== '(circular reference)') {
     html += ` <button class="btn-copy-dax" data-dax="${esc(chain.expression)}" title="Copy DAX">&#128203;</button>`;
   }
+  // Impact analysis button
+  html += ` <button class="btn-impact" data-impact-id="${esc(chain.id)}" title="Show impact analysis">Impact</button>`;
   html += `</div>`;
 
   if (chain.expression) {
@@ -262,6 +283,45 @@ function renderChainNode(chain, depth) {
       html += `</details>`;
     } else {
       html += `<div class="chain-dax">${highlightDax(chain.expression)}</div>`;
+    }
+  }
+
+  // USERELATIONSHIP references
+  if (chain.useRelationships && chain.useRelationships.length > 0) {
+    // Group relationship columns into pairs
+    const relPairs = [];
+    for (let i = 0; i < chain.useRelationships.length; i += 2) {
+      const from = chain.useRelationships[i];
+      const to = chain.useRelationships[i + 1];
+      if (from && to) {
+        relPairs.push({ from, to });
+      } else if (from) {
+        relPairs.push({ from, to: null });
+      }
+    }
+    if (relPairs.length > 0 || chain.useRelationships.length > 0) {
+      html += `<div class="chain-relationships">`;
+      html += `<div class="chain-rel-header">Relationships:</div>`;
+      if (relPairs.length > 0) {
+        for (const pair of relPairs) {
+          html += `<div class="chain-rel-item">`;
+          html += `<span class="chain-dot" style="background:#ff5722"></span>`;
+          html += `${esc(pair.from.table)}[${esc(pair.from.column)}]`;
+          if (pair.to) html += ` &#8596; ${esc(pair.to.table)}[${esc(pair.to.column)}]`;
+          const cf = chain.useRelationships.crossFilter;
+          if (cf) html += ` <span class="mode-badge mode-badge-dual">${esc(cf)}</span>`;
+          html += `</div>`;
+        }
+      } else {
+        // Show individual columns involved
+        for (const ur of chain.useRelationships) {
+          html += `<div class="chain-rel-item">`;
+          html += `<span class="chain-dot" style="background:#ff5722"></span>`;
+          html += `${esc(ur.table)}[${esc(ur.column)}]`;
+          html += `</div>`;
+        }
+      }
+      html += `</div>`;
     }
   }
 
@@ -299,17 +359,22 @@ function renderChainNode(chain, depth) {
 // --- Section 3: Source Lineage Table ---
 
 function renderSourceTableSection(sourceTable) {
-  let html = '<div class="lineage-section">';
-  html += '<h3>3. Source Lineage</h3>';
-
   if (sourceTable.length === 0) {
+    let html = '<div class="lineage-section">';
+    html += '<h3>3. Source Lineage</h3>';
     html += '<p class="lineage-muted">No column-level source tracing available.</p>';
     html += '</div>';
     return html;
   }
 
+  // Count unique sources
+  const uniqueSources = new Set(sourceTable.filter(r => r.sourceTable).map(r => r.sourceTable));
+
+  let html = '<details class="lineage-section lineage-section-collapsible" open>';
+  html += `<summary class="lineage-section-header"><h3>3. Source Lineage <span class="section-summary-count">${sourceTable.length} column${sourceTable.length !== 1 ? 's' : ''} traced to ${uniqueSources.size} source${uniqueSources.size !== 1 ? 's' : ''}</span></h3></summary>`;
+
   html += '<div class="trace-table-wrapper"><table class="trace-table">';
-  html += '<thead><tr><th>DAX Ref</th><th>PBI Table</th><th>PBI Column</th><th>Source Column (PQ)</th><th>Original Source Column</th><th>Rename Chain</th><th>Source Table</th><th>Source Column (Full)</th></tr></thead>';
+  html += '<thead><tr><th>DAX Ref</th><th>PBI Table</th><th>PBI Column</th><th>Mode</th><th>Source Column (PQ)</th><th>Original Source Column</th><th>Rename Chain</th><th>Source Table</th><th>Source Column (Full)</th></tr></thead>';
   html += '<tbody>';
   for (const row of sourceTable) {
     const rowClass = row.renamed ? ' class="renamed-row"' : '';
@@ -317,6 +382,7 @@ function renderSourceTableSection(sourceTable) {
     html += `<td>${esc(row.daxReference)}</td>`;
     html += `<td>${esc(row.pbiTable)}</td>`;
     html += `<td>${esc(row.pbiColumn)}</td>`;
+    html += `<td>${renderModeBadge(row.mode)}</td>`;
     html += `<td>${esc(row.sourceColumn)}</td>`;
     html += `<td>${esc(row.originalSourceColumn || '')}</td>`;
     if (row.renamed && row.originalSourceColumn && row.sourceColumn && row.pbiColumn) {
@@ -329,7 +395,7 @@ function renderSourceTableSection(sourceTable) {
     html += `</tr>`;
   }
   html += '</tbody></table></div>';
-  html += '</div>';
+  html += '</details>';
   return html;
 }
 
@@ -572,6 +638,16 @@ function bindClickHandlers(container) {
     });
   });
 
+  // Impact analysis buttons
+  container.querySelectorAll('.btn-impact[data-impact-id]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (_currentGraph) {
+        openImpactPanel(btn.dataset.impactId, _currentGraph);
+      }
+    });
+  });
+
   // Copy lineage buttons
   container.querySelectorAll('.btn-copy-lineage').forEach(btn => {
     btn.addEventListener('click', (e) => {
@@ -589,6 +665,91 @@ function bindClickHandlers(container) {
       }
     });
   });
+}
+
+/**
+ * Add export toolbar (SVG/PNG buttons) above the tree SVG.
+ */
+function addExportToolbar(container, name) {
+  // Remove any existing toolbar
+  const existing = container.querySelector('.tree-export-toolbar');
+  if (existing) existing.remove();
+
+  const toolbar = document.createElement('div');
+  toolbar.className = 'tree-export-toolbar';
+
+  const btnSvg = document.createElement('button');
+  btnSvg.className = 'btn-tree-export';
+  btnSvg.textContent = 'Export SVG';
+  btnSvg.title = 'Download tree as SVG';
+  btnSvg.addEventListener('click', () => {
+    exportTreeAsSvg(container, sanitizeFilename(name));
+    showExportFeedback(btnSvg);
+  });
+
+  const btnPng = document.createElement('button');
+  btnPng.className = 'btn-tree-export';
+  btnPng.textContent = 'Export PNG';
+  btnPng.title = 'Download tree as PNG';
+  btnPng.addEventListener('click', () => {
+    exportTreeAsPng(container, sanitizeFilename(name));
+    showExportFeedback(btnPng);
+  });
+
+  toolbar.appendChild(btnSvg);
+  toolbar.appendChild(btnPng);
+  container.insertBefore(toolbar, container.firstChild);
+}
+
+function sanitizeFilename(name) {
+  return (name || 'lineage').replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 50);
+}
+
+function showExportFeedback(btn) {
+  const orig = btn.textContent;
+  btn.textContent = 'Exported!';
+  btn.style.color = '#4caf50';
+  btn.style.borderColor = '#4caf50';
+  setTimeout(() => { btn.textContent = orig; btn.style.color = ''; btn.style.borderColor = ''; }, 1500);
+}
+
+/**
+ * Render Import/DirectQuery mode badge.
+ */
+function renderModeBadge(mode) {
+  if (!mode) return '';
+  const lower = mode.toLowerCase();
+  if (lower === 'import') return '<span class="mode-badge mode-badge-import">Import</span>';
+  if (lower === 'directquery') return '<span class="mode-badge mode-badge-dq">DQ</span>';
+  if (lower === 'dual') return '<span class="mode-badge mode-badge-dual">Dual</span>';
+  return `<span class="mode-badge">${esc(mode)}</span>`;
+}
+
+/**
+ * Count total measures and columns in a chain tree.
+ */
+function countChainNodes(chain) {
+  if (!chain) return { measures: 0, columns: 0 };
+  let measures = 1; // count self
+  let columns = chain.columns ? chain.columns.length : 0;
+  for (const child of (chain.children || [])) {
+    const sub = countChainNodes(child);
+    measures += sub.measures;
+    columns += sub.columns;
+  }
+  return { measures, columns };
+}
+
+/**
+ * Check if a measure chain contains circular references.
+ */
+function chainHasCircularRef(chain) {
+  if (!chain) return false;
+  if (chain.expression === '(circular reference)') return true;
+  for (const child of (chain.children || [])) {
+    if (chainHasCircularRef(child)) return true;
+  }
+  return false;
 }
 
 function esc(str) {

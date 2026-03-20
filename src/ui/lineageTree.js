@@ -288,7 +288,36 @@ export function renderLineageTree(container, treeData) {
     .text(d => {
       let tip = `${d.data.layerLabel}: ${d.data.name}`;
       if (d.data.detail) tip += `\n${d.data.detail}`;
+      if (d.children && d.children.length > 0) tip += '\n(click to collapse)';
       return tip;
+    });
+
+  // Collapse/expand indicator for nodes with children
+  nodes.filter(d => d.data.children && d.data.children.length > 0)
+    .append('text')
+    .attr('x', NODE_WIDTH / 2 - 14)
+    .attr('y', 4)
+    .attr('text-anchor', 'middle')
+    .attr('fill', '#7a7a90')
+    .attr('font-size', '12px')
+    .attr('class', 'tree-node-toggle')
+    .text(d => d.children ? '\u25BC' : '\u25B6')
+    .style('cursor', 'pointer');
+
+  // Click to collapse/expand
+  nodes.filter(d => d.data.children && d.data.children.length > 0)
+    .style('cursor', 'pointer')
+    .on('click', function(event, d) {
+      event.stopPropagation();
+      if (d.children) {
+        d._children = d.children;
+        d.children = null;
+      } else if (d._children) {
+        d.children = d._children;
+        d._children = null;
+      }
+      // Re-render the tree in place
+      renderLineageTree(container, treeData);
     });
 
   // Add legend
@@ -302,6 +331,125 @@ export function destroyTree(container) {
   if (container) {
     container.innerHTML = '';
   }
+}
+
+/**
+ * Export the current tree as SVG file.
+ * @param {HTMLElement} container - The tree container element.
+ * @param {string} [filename='lineage-tree'] - Base filename.
+ */
+export function exportTreeAsSvg(container, filename = 'lineage-tree') {
+  const svgEl = container.querySelector('svg');
+  if (!svgEl) return;
+
+  // Clone SVG and prepare for standalone export
+  const clone = svgEl.cloneNode(true);
+
+  // Set explicit dimensions from viewBox
+  const viewBox = clone.getAttribute('viewBox');
+  if (viewBox) {
+    const [, , w, h] = viewBox.split(' ').map(Number);
+    clone.setAttribute('width', w);
+    clone.setAttribute('height', h);
+  }
+
+  // Add background and inline styles for standalone rendering
+  const style = document.createElementNS('http://www.w3.org/2000/svg', 'style');
+  style.textContent = `
+    svg { background: #1a1a2e; }
+    .tree-node-name { fill: #ececec; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+    .tree-node-layer { fill: #9999bb; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+  `;
+  clone.insertBefore(style, clone.firstChild);
+
+  // Add watermark
+  const vb = viewBox ? viewBox.split(' ').map(Number) : [0, 0, 800, 400];
+  const watermark = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+  watermark.setAttribute('x', vb[2] - 10);
+  watermark.setAttribute('y', vb[3] - 8);
+  watermark.setAttribute('text-anchor', 'end');
+  watermark.setAttribute('fill', '#555580');
+  watermark.setAttribute('font-size', '10');
+  watermark.setAttribute('font-family', '-apple-system, BlinkMacSystemFont, sans-serif');
+  watermark.textContent = 'PBIP Lineage Explorer — github.com/JonathanJihwanKim/pbip-lineage-explorer';
+  clone.appendChild(watermark);
+
+  const serializer = new XMLSerializer();
+  const svgString = serializer.serializeToString(clone);
+  const blob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
+  downloadBlob(blob, `${filename}.svg`);
+}
+
+/**
+ * Export the current tree as PNG file.
+ * @param {HTMLElement} container - The tree container element.
+ * @param {string} [filename='lineage-tree'] - Base filename.
+ */
+export function exportTreeAsPng(container, filename = 'lineage-tree') {
+  const svgEl = container.querySelector('svg');
+  if (!svgEl) return;
+
+  const clone = svgEl.cloneNode(true);
+  const viewBox = clone.getAttribute('viewBox');
+  const [, , w, h] = viewBox ? viewBox.split(' ').map(Number) : [0, 0, 800, 400];
+
+  // Scale up for crisp PNG (2x)
+  const scale = 2;
+  clone.setAttribute('width', w * scale);
+  clone.setAttribute('height', h * scale);
+
+  // Add inline styles + background
+  const style = document.createElementNS('http://www.w3.org/2000/svg', 'style');
+  style.textContent = `
+    svg { background: #1a1a2e; }
+    .tree-node-name { fill: #ececec; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+    .tree-node-layer { fill: #9999bb; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+  `;
+  clone.insertBefore(style, clone.firstChild);
+
+  // Add watermark
+  const watermark = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+  watermark.setAttribute('x', w - 10);
+  watermark.setAttribute('y', h - 8);
+  watermark.setAttribute('text-anchor', 'end');
+  watermark.setAttribute('fill', '#555580');
+  watermark.setAttribute('font-size', '10');
+  watermark.setAttribute('font-family', '-apple-system, BlinkMacSystemFont, sans-serif');
+  watermark.textContent = 'PBIP Lineage Explorer — github.com/JonathanJihwanKim/pbip-lineage-explorer';
+  clone.appendChild(watermark);
+
+  const serializer = new XMLSerializer();
+  const svgString = serializer.serializeToString(clone);
+  const svgBlob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
+  const url = URL.createObjectURL(svgBlob);
+
+  const img = new Image();
+  img.onload = () => {
+    const canvas = document.createElement('canvas');
+    canvas.width = w * scale;
+    canvas.height = h * scale;
+    const ctx = canvas.getContext('2d');
+
+    // Dark background
+    ctx.fillStyle = '#1a1a2e';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, 0, 0);
+
+    canvas.toBlob((blob) => {
+      if (blob) downloadBlob(blob, `${filename}.png`);
+      URL.revokeObjectURL(url);
+    }, 'image/png');
+  };
+  img.onerror = () => URL.revokeObjectURL(url);
+  img.src = url;
+}
+
+function downloadBlob(blob, filename) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(a.href);
 }
 
 // --- Helpers ---

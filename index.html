@@ -19,24 +19,70 @@
   <meta name="twitter:title" content="PBIP Lineage Explorer — Trace DAX Lineage Instantly" />
   <meta name="twitter:description" content="Trace DAX measure lineage from visuals to source columns in Power BI PBIP projects. Free, open-source, 100% client-side." />
 
+  <!-- Favicon -->
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%231a1a2e'/%3E%3Ccircle cx='8' cy='16' r='3' fill='%23ff9800'/%3E%3Ccircle cx='22' cy='8' r='3' fill='%234285f4'/%3E%3Ccircle cx='22' cy='24' r='3' fill='%234caf50'/%3E%3Cline x1='11' y1='14.5' x2='19' y2='9' stroke='%234285f4' stroke-width='1.5'/%3E%3Cline x1='11' y1='17.5' x2='19' y2='23' stroke='%234caf50' stroke-width='1.5'/%3E%3C/svg%3E" />
+
+  <!-- Open Graph image -->
+  <meta property="og:image" content="https://jonathanjihwankim.github.io/pbip-lineage-explorer/docs/screenshot.png" />
+  <meta name="twitter:image" content="https://jonathanjihwankim.github.io/pbip-lineage-explorer/docs/screenshot.png" />
+
+  <!-- JSON-LD Structured Data -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "PBIP Lineage Explorer",
+    "description": "Trace DAX measure lineage from visuals to source columns in Power BI PBIP projects — instantly, in your browser.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Web",
+    "url": "https://jonathanjihwankim.github.io/pbip-lineage-explorer/",
+    "author": {
+      "@type": "Person",
+      "name": "Jihwan Kim",
+      "url": "https://github.com/JonathanJihwanKim"
+    },
+    "offers": {
+      "@type": "Offer",
+      "price": "0",
+      "priceCurrency": "EUR"
+    },
+    "softwareVersion": "1.0.0",
+    "license": "https://opensource.org/licenses/MIT",
+    "featureList": [
+      "DAX measure lineage tracing",
+      "Visual-to-source column mapping",
+      "Impact analysis (upstream/downstream)",
+      "D3.js interactive tree visualization",
+      "Field parameter support",
+      "Import/DirectQuery mode detection",
+      "SVG/PNG export",
+      "100% client-side processing"
+    ]
+  }
+  </script>
+
   <link rel="stylesheet" href="/styles/main.css" />
 </head>
 <body>
   <!-- Toolbar -->
-  <header id="toolbar">
+  <header id="toolbar" role="banner">
     <div class="toolbar-left">
-      <button id="btn-open-folder" title="Open PBIP project folder">
-        <span class="icon">&#128194;</span> Open Project
+      <button id="btn-open-folder" title="Open PBIP project folder" aria-label="Open PBIP project folder">
+        <span class="icon" aria-hidden="true">&#128194;</span> Open Project
       </button>
-      <span id="stats" class="toolbar-stats"></span>
+      <span id="stats" class="toolbar-stats" role="status" aria-live="polite"></span>
     </div>
     <div class="toolbar-center">
       <span class="app-title">PBIP Lineage Explorer</span>
     </div>
     <div class="toolbar-right">
-      <button id="btn-source-map" class="toolbar-btn-source-map hidden" title="View Source Column Mapping">
-        <span class="icon">&#128203;</span> Source Map
+      <button id="btn-model-health" class="toolbar-btn-source-map hidden" title="Model Health Dashboard" aria-label="Model Health Dashboard">
+        <span class="icon" aria-hidden="true">&#128202;</span> Health
       </button>
+      <button id="btn-source-map" class="toolbar-btn-source-map hidden" title="View Source Column Mapping" aria-label="View Source Column Mapping">
+        <span class="icon" aria-hidden="true">&#128203;</span> Source Map
+      </button>
+      <button id="btn-keyboard-help" class="keyboard-help-btn" title="Keyboard shortcuts (?)" aria-label="Show keyboard shortcuts">?</button>
       <a href="https://github.com/sponsors/JonathanJihwanKim" target="_blank" rel="noopener" class="toolbar-sponsor" title="Support this project">
         <span class="sponsor-heart">&#9829;</span>
         <span class="sponsor-text">Sponsor</span>
@@ -53,20 +99,20 @@
   <!-- Main layout: sidebar + content -->
   <div id="app-layout" class="app-layout">
     <!-- Left: Sidebar with Measures / Visuals tabs -->
-    <aside id="measure-picker" class="sidebar sidebar-left">
-      <div class="sidebar-tabs">
-        <button class="sidebar-tab" data-tab="measures">
+    <aside id="measure-picker" class="sidebar sidebar-left" role="navigation" aria-label="Measure and visual browser">
+      <div class="sidebar-tabs" role="tablist" aria-label="Browse by">
+        <button class="sidebar-tab" data-tab="measures" role="tab" aria-selected="false" aria-controls="tab-measures">
           Measures <span id="measure-count" class="measure-count-badge"></span>
         </button>
-        <button class="sidebar-tab active" data-tab="visuals">
+        <button class="sidebar-tab active" data-tab="visuals" role="tab" aria-selected="true" aria-controls="tab-visuals">
           Visuals <span id="visual-count" class="measure-count-badge"></span>
         </button>
       </div>
 
       <!-- Measures tab panel -->
-      <div class="tab-panel hidden" id="tab-measures">
+      <div class="tab-panel hidden" id="tab-measures" role="tabpanel" aria-labelledby="tab-measures">
         <div class="search-group">
-          <input type="text" id="measure-search" placeholder="Search measures..." autocomplete="off" />
+          <input type="text" id="measure-search" placeholder="Search measures... (/)" autocomplete="off" aria-label="Search measures" />
           <div id="measure-search-info" class="search-info hidden"></div>
         </div>
         <div class="measure-filter-row hidden" id="measure-filter-row">
@@ -74,20 +120,20 @@
             <input type="checkbox" id="orphan-filter" /> <span>Orphans only</span>
           </label>
         </div>
-        <div id="measure-list" class="measure-list"></div>
+        <div id="measure-list" class="measure-list" role="listbox" aria-label="Measures"></div>
       </div>
 
       <!-- Visuals tab panel -->
-      <div class="tab-panel" id="tab-visuals">
+      <div class="tab-panel" id="tab-visuals" role="tabpanel" aria-labelledby="tab-visuals">
         <div class="search-group">
-          <input type="text" id="visual-search" placeholder="Search visuals..." autocomplete="off" />
+          <input type="text" id="visual-search" placeholder="Search visuals..." autocomplete="off" aria-label="Search visuals" />
         </div>
-        <div id="visual-list" class="measure-list"></div>
+        <div id="visual-list" class="measure-list" role="listbox" aria-label="Visuals"></div>
       </div>
     </aside>
 
     <!-- Right: Lineage results / Source Map -->
-    <main id="lineage-results" class="lineage-results">
+    <main id="lineage-results" class="lineage-results" role="main" aria-label="Lineage results" aria-live="polite">
       <div id="lineage-empty" class="lineage-empty">
         <div class="empty-state">
           <div class="empty-state-icon">
@@ -116,7 +162,7 @@
   </div>
 
   <!-- Welcome overlay -->
-  <div id="welcome-overlay" class="overlay">
+  <div id="welcome-overlay" class="overlay" role="dialog" aria-label="Welcome">
     <div class="overlay-card welcome-card">
       <h1>PBIP Lineage Explorer</h1>
       <p class="welcome-tagline">Trace DAX measure lineage from visuals to source columns — instantly, in your browser.</p>
@@ -157,6 +203,11 @@
 
       <div class="overlay-actions">
         <button id="btn-get-started" class="btn-primary">Open Project Folder</button>
+        <button id="btn-try-sample" class="btn-secondary">Try Sample Project</button>
+      </div>
+
+      <div id="drop-zone-hint" class="drop-zone-hint">
+        <p>or drag &amp; drop your PBIP project folder here</p>
       </div>
 
       <div class="welcome-sponsor">
@@ -186,7 +237,7 @@
   </div>
 
   <!-- Loading overlay -->
-  <div id="loading-overlay" class="loading-overlay hidden">
+  <div id="loading-overlay" class="loading-overlay hidden" role="alert" aria-live="assertive">
     <div class="loading-card">
       <div class="loading-text" id="loading-text">Loading...</div>
       <div class="loading-bar">
@@ -195,12 +246,49 @@
     </div>
   </div>
 
+  <!-- Keyboard shortcut help popover -->
+  <div id="keyboard-help-popover" class="keyboard-help-popover hidden" role="dialog" aria-label="Keyboard shortcuts">
+    <h4>Keyboard Shortcuts</h4>
+    <div class="keyboard-help-row">
+      <span class="keyboard-help-key">/</span>
+      <span class="keyboard-help-desc">Focus search</span>
+    </div>
+    <div class="keyboard-help-row">
+      <span class="keyboard-help-key">Alt + &#8592;</span>
+      <span class="keyboard-help-desc">Go back</span>
+    </div>
+    <div class="keyboard-help-row">
+      <span class="keyboard-help-key">Esc</span>
+      <span class="keyboard-help-desc">Close panel / source map</span>
+    </div>
+    <div class="keyboard-help-row">
+      <span class="keyboard-help-key">?</span>
+      <span class="keyboard-help-desc">Toggle this help</span>
+    </div>
+  </div>
+
   <!-- Toast notification -->
   <div id="sponsor-toast" class="toast-notification hidden">
     <div class="toast-content">
       <span class="toast-icon">&#9829;</span>
-      <span class="toast-message">Enjoying PBIP Lineage Explorer? <a href="https://github.com/sponsors/JonathanJihwanKim" target="_blank" rel="noopener">Support development</a></span>
+      <span id="toast-message" class="toast-message">Enjoying PBIP Lineage Explorer? <a href="https://github.com/sponsors/JonathanJihwanKim" target="_blank" rel="noopener">Support development</a></span>
       <button class="toast-close" id="toast-close">&#10005;</button>
+    </div>
+  </div>
+
+  <!-- Impact Analysis slide-over panel -->
+  <div id="impact-panel" class="impact-panel hidden" role="dialog" aria-label="Impact Analysis" aria-hidden="true">
+    <div class="impact-panel-header">
+      <h3 id="impact-panel-title">Impact Analysis</h3>
+      <button id="impact-panel-close" class="impact-panel-close" title="Close (Escape)" aria-label="Close impact panel">&#10005;</button>
+    </div>
+    <div class="impact-panel-tabs" role="tablist" aria-label="Impact direction">
+      <button class="impact-tab active" data-direction="downstream" role="tab" aria-selected="true">Downstream</button>
+      <button class="impact-tab" data-direction="upstream" role="tab" aria-selected="false">Upstream</button>
+    </div>
+    <div id="impact-panel-content" class="impact-panel-content"></div>
+    <div class="impact-panel-footer">
+      <button id="impact-export-btn" class="impact-export-btn">Export Report</button>
     </div>
   </div>
 

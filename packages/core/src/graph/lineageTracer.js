@@ -266,7 +266,36 @@ function buildMeasureChain(measureNodeId, graph, visited) {
     description: node.metadata?.description || '',
     children: [],  // sub-measures
     columns: [],   // leaf column references
+    useRelationships: [], // USERELATIONSHIP references
   };
+
+  // Collect USERELATIONSHIP edges for this measure
+  for (const edge of graph.edges) {
+    if (edge.type === EDGE_TYPES.MEASURE_TO_USERELATIONSHIP && edge.source === measureNodeId) {
+      const colNode = graph.nodes.get(edge.target);
+      if (colNode) {
+        result.useRelationships.push({
+          column: colNode.name,
+          table: colNode.metadata?.table || '',
+        });
+      }
+    }
+  }
+  // Also check for table_relationship edges to find cross-filter direction
+  if (result.useRelationships.length > 0) {
+    const relTables = new Set(result.useRelationships.map(ur => ur.table));
+    for (const edge of graph.edges) {
+      if (edge.type === 'table_relationship') {
+        const srcNode = graph.nodes.get(edge.source);
+        const tgtNode = graph.nodes.get(edge.target);
+        if (srcNode && tgtNode && relTables.has(srcNode.name) && relTables.has(tgtNode.name)) {
+          result.useRelationships.crossFilter = edge.metadata?.crossFilter || 'single';
+          result.useRelationships.fromTable = srcNode.name;
+          result.useRelationships.toTable = tgtNode.name;
+        }
+      }
+    }
+  }
 
   // Walk upstream edges from this measure
   const upNeighbors = graph.adjacency.upstream.get(measureNodeId) || [];
@@ -345,6 +374,9 @@ function buildSourceTable(measureChain, graph) {
         srcColumn = `${srcTable}.${srcColumn}`;
       }
 
+      // Determine storage mode (Import/DirectQuery)
+      const mode = tableNode?.metadata?.dataSource?.mode || '';
+
       rows.push({
         daxReference: `${parentMeasure || chain.name}`,
         pbiTable: col.table,
@@ -357,6 +389,7 @@ function buildSourceTable(measureChain, graph) {
         renameChain: col.wasRenamed
           ? { sourceName: col.originalSourceColumn || '', pqName: col.sourceColumn || '', pbiName: col.name }
           : null,
+        mode,
       });
     }
 

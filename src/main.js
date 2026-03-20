@@ -9,6 +9,7 @@ import {
   parseTmdlModel, parseExpressions, parseDaxExpression,
   parsePbirReport, detectEnrichments, applyEnrichments,
   buildGraph, computeStats, traceMeasureLineage, traceVisualLineage,
+  identifyProjectStructure,
 } from '@pbip-lineage/core';
 
 // Browser-specific file reader
@@ -21,6 +22,8 @@ import { initVisualBrowser, populateVisuals, selectVisual } from './ui/visualBro
 import { initLineageView, renderLineage, renderVisualLineage, clearLineage } from './ui/lineageView.js';
 import { populateSourceMapping, renderSourceMapping } from './ui/sourceMapping.js';
 import { initPageLayout, renderPageLayout } from './ui/pageLayout.js';
+import { initImpactPanel, openImpactPanel } from './ui/impactPanel.js';
+import { initModelHealth, toggleModelHealth, closeModelHealth } from './ui/modelHealth.js';
 
 const state = {
   graph: null,
@@ -31,7 +34,28 @@ const state = {
   measureSelectCount: 0,
   navigationHistory: [], // stack of { type: 'measure'|'visual', id: string }
   currentSelection: null, // { type: 'measure'|'visual', id: string }
+  firstLineageTraced: false, // tracks if user has traced at least one lineage
+  sessionStats: { measuresTraced: 0, columnsmapped: 0, visualsExplored: 0 },
 };
+
+// Sample project file manifest (fetched from /sample-pbip/)
+const SAMPLE_FILES = [
+  'definition/expressions.tmdl',
+  'definition/relationships.tmdl',
+  'definition/tables/Customers.tmdl',
+  'definition/tables/DateTable.tmdl',
+  'definition/tables/FieldParameter.tmdl',
+  'definition/tables/Products.tmdl',
+  'definition/tables/Sales.tmdl',
+  'definition/tables/TimeCalc.tmdl',
+  'report/definition/pages/page1/page.json',
+  'report/definition/pages/page1/visuals/visual1/visual.json',
+  'report/definition/pages/page1/visuals/visual2/visual.json',
+  'report/definition/pages/page1/visuals/visual3/visual.json',
+  'report/definition/pages/page2/page.json',
+  'report/definition/pages/page2/visuals/visual4/visual.json',
+  'report/definition/pages/page2/visuals/visual5/visual.json',
+];
 
 // --- Initialization ---
 
@@ -41,9 +65,14 @@ function init() {
   initVisualBrowser({ onVisualSelect: handleVisualSelect, onMeasureNavigate: handleMeasureSelect, onPageLayoutSelect: handlePageLayoutSelect });
   initLineageView({ onMeasureNavigate: handleMeasureSelect, onVisualNavigate: handleVisualSelect });
   initPageLayout({ onVisualSelect: handleVisualSelect });
+  initImpactPanel({ onMeasureNavigate: handleMeasureSelect, onVisualNavigate: handleVisualSelect });
+  initModelHealth({ onMeasureNavigate: handleMeasureSelect });
 
   const btnLoadModel = document.getElementById('btn-load-model');
   if (btnLoadModel) btnLoadModel.addEventListener('click', handleLoadSemanticModel);
+
+  const btnTrySample = document.getElementById('btn-try-sample');
+  if (btnTrySample) btnTrySample.addEventListener('click', handleLoadSampleProject);
 
   const btnBack = document.getElementById('btn-back');
   if (btnBack) btnBack.addEventListener('click', navigateBack);
@@ -52,16 +81,30 @@ function init() {
   const btnSourceMap = document.getElementById('btn-source-map');
   if (btnSourceMap) btnSourceMap.addEventListener('click', toggleSourceMap);
 
+  // Model Health toggle
+  const btnModelHealth = document.getElementById('btn-model-health');
+  if (btnModelHealth) btnModelHealth.addEventListener('click', () => {
+    if (state.graph) toggleModelHealth(state.graph);
+  });
+
   // Toast close
   const toastClose = document.getElementById('toast-close');
   if (toastClose) toastClose.addEventListener('click', hideToast);
 
+  // Keyboard help
+  const btnKeyboardHelp = document.getElementById('btn-keyboard-help');
+  if (btnKeyboardHelp) btnKeyboardHelp.addEventListener('click', toggleKeyboardHelp);
+
   // Sidebar tab switching
   document.querySelectorAll('.sidebar-tab').forEach(tab => {
     tab.addEventListener('click', () => {
-      document.querySelectorAll('.sidebar-tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.sidebar-tab').forEach(t => {
+        t.classList.remove('active');
+        t.setAttribute('aria-selected', 'false');
+      });
       document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
       tab.classList.add('active');
+      tab.setAttribute('aria-selected', 'true');
       const panelId = `tab-${tab.dataset.tab}`;
       const panel = document.getElementById(panelId);
       if (panel) panel.classList.remove('hidden');
@@ -69,6 +112,12 @@ function init() {
   });
 
   document.addEventListener('keydown', handleKeyDown);
+
+  // Drag-and-drop on welcome overlay
+  initDragAndDrop();
+
+  // Deep link: restore selection from URL hash after project load
+  window.addEventListener('hashchange', handleHashNavigation);
 }
 
 // --- Source Map Toggle ---
@@ -102,10 +151,13 @@ function toggleSourceMap() {
 
 // --- Toast ---
 
-function showSponsorToast() {
+function showSponsorToast(lineageDepth) {
   if (sessionStorage.getItem('pbip-toast-shown')) return;
   const toast = document.getElementById('sponsor-toast');
-  if (toast) {
+  const messageEl = document.getElementById('toast-message');
+  if (toast && messageEl) {
+    const depthText = lineageDepth ? `${lineageDepth} layers of dependencies` : 'a full dependency chain';
+    messageEl.innerHTML = `You just traced ${depthText} in seconds. This tool is free forever &mdash; <a href="https://github.com/sponsors/JonathanJihwanKim" target="_blank" rel="noopener">sponsor to keep it that way</a>.`;
     toast.classList.remove('hidden');
     sessionStorage.setItem('pbip-toast-shown', '1');
   }
@@ -114,6 +166,36 @@ function showSponsorToast() {
 function hideToast() {
   const toast = document.getElementById('sponsor-toast');
   if (toast) toast.classList.add('hidden');
+}
+
+// --- Value Counter ---
+
+function updateValueCounter() {
+  let counter = document.getElementById('value-counter');
+  if (!counter) {
+    // Create counter element at the bottom of lineage sections
+    counter = document.createElement('div');
+    counter.id = 'value-counter';
+    counter.className = 'value-counter';
+    const sections = document.getElementById('lineage-sections');
+    if (sections) sections.after(counter);
+  }
+  const { measuresTraced, columnsmapped, visualsExplored } = state.sessionStats;
+  const parts = [];
+  if (measuresTraced > 0) parts.push(`${measuresTraced} measure${measuresTraced !== 1 ? 's' : ''} traced`);
+  if (columnsmapped > 0) parts.push(`${columnsmapped} column${columnsmapped !== 1 ? 's' : ''} mapped`);
+  if (visualsExplored > 0) parts.push(`${visualsExplored} visual${visualsExplored !== 1 ? 's' : ''} explored`);
+  if (parts.length > 0) {
+    counter.innerHTML = `${parts.join(' &middot; ')} in this session &mdash; <a href="https://github.com/sponsors/JonathanJihwanKim" target="_blank" rel="noopener">free forever</a>`;
+    counter.classList.remove('hidden');
+  }
+}
+
+// --- Keyboard Help ---
+
+function toggleKeyboardHelp() {
+  const popover = document.getElementById('keyboard-help-popover');
+  if (popover) popover.classList.toggle('hidden');
 }
 
 // --- Data Loading ---
@@ -140,6 +222,60 @@ async function handleOpenFolder() {
     if (err.name === 'AbortError') return;
     console.error('Error loading project:', err);
     showWelcomeError(`Failed to load project: ${err.message}`);
+  }
+}
+
+/**
+ * Load the bundled sample project to let first-time users try the tool without a PBIP project.
+ */
+async function handleLoadSampleProject() {
+  try {
+    clearWelcomeError();
+    showLoadingProgress('Loading sample project...', 10);
+
+    // Fetch all sample files in parallel
+    const basePath = import.meta.env.BASE_URL || '/';
+    const entries = await Promise.all(
+      SAMPLE_FILES.map(async (filePath) => {
+        const resp = await fetch(`${basePath}sample-pbip/${filePath}`);
+        if (!resp.ok) throw new Error(`Failed to fetch ${filePath}`);
+        const content = await resp.text();
+        return [filePath, content];
+      })
+    );
+
+    const allFiles = new Map(entries);
+
+    // Separate into model files (definition/) and report files (report/)
+    const modelFiles = new Map();
+    const reportFiles = new Map();
+    for (const [path, content] of allFiles) {
+      if (path.startsWith('report/')) {
+        // Strip 'report/' prefix to match expected structure
+        reportFiles.set(path.slice('report/'.length), content);
+      } else {
+        modelFiles.set(path, content);
+      }
+    }
+
+    const modelStructure = identifyProjectStructure(modelFiles);
+    const reportStructure = identifyProjectStructure(reportFiles);
+
+    // Build a projectResult matching the shape expected by loadProjectResult
+    const projectResult = {
+      reportName: 'Sample Report',
+      reportStructure,
+      semanticModelPath: null,
+      modelName: 'Sample SemanticModel',
+      modelStructure,
+    };
+
+    await loadProjectResult(projectResult);
+  } catch (err) {
+    hideLoading();
+    hideLoadingOverlay();
+    console.error('Error loading sample project:', err);
+    showWelcomeError(`Failed to load sample project: ${err.message}`);
   }
 }
 
@@ -257,9 +393,11 @@ async function loadProjectResult(projectResult) {
   populateVisuals(graph);
   populateSourceMapping(graph);
 
-  // Show Source Map button
+  // Show Source Map and Model Health buttons
   const btnSourceMap = document.getElementById('btn-source-map');
   if (btnSourceMap) btnSourceMap.classList.remove('hidden');
+  const btnModelHealth = document.getElementById('btn-model-health');
+  if (btnModelHealth) btnModelHealth.classList.remove('hidden');
 
   // Show orphan filter
   const filterRow = document.getElementById('measure-filter-row');
@@ -286,6 +424,9 @@ async function loadProjectResult(projectResult) {
 
   hideLoading();
   hideLoadingOverlay();
+
+  // Restore selection from URL hash (deep link)
+  restoreFromHash();
 }
 
 // --- Semantic Model Loading ---
@@ -378,7 +519,7 @@ async function handleLoadSemanticModel() {
 function handleMeasureSelect(measureId, { skipHistory = false } = {}) {
   if (!state.graph) return;
 
-  // Exit source map view if active
+  // Exit source map / model health views if active
   if (state.sourceMapVisible) {
     state.sourceMapVisible = false;
     const btn = document.getElementById('btn-source-map');
@@ -386,6 +527,7 @@ function handleMeasureSelect(measureId, { skipHistory = false } = {}) {
     const sourceMapContainer = document.getElementById('source-map-container');
     if (sourceMapContainer) sourceMapContainer.classList.add('hidden');
   }
+  closeModelHealth();
 
   const node = state.graph.nodes.get(measureId);
   if (!node || node.type !== 'measure') {
@@ -400,6 +542,7 @@ function handleMeasureSelect(measureId, { skipHistory = false } = {}) {
   }
   state.currentSelection = { type: 'measure', id: measureId };
   updateBackButton();
+  updateHash('measure', measureId);
 
   try {
     const lineage = traceMeasureLineage(measureId, state.graph);
@@ -412,10 +555,16 @@ function handleMeasureSelect(measureId, { skipHistory = false } = {}) {
     renderLineage(lineage, node.name, state.graph);
     selectMeasure(measureId);
 
-    // Sponsor toast after 5th measure selection
-    state.measureSelectCount++;
-    if (state.measureSelectCount === 5) {
-      showSponsorToast();
+    // Track session stats
+    state.sessionStats.measuresTraced++;
+    state.sessionStats.columnsmapped += lineage.sourceTable?.length || 0;
+    updateValueCounter();
+
+    // Sponsor toast on first successful lineage trace
+    if (!state.firstLineageTraced) {
+      state.firstLineageTraced = true;
+      const depth = lineage.chain?.length || lineage.summary?.layers?.length || 0;
+      setTimeout(() => showSponsorToast(depth), 2000);
     }
   } catch (err) {
     console.error(`Error tracing lineage for measure ${measureId}:`, err);
@@ -428,7 +577,7 @@ function handleMeasureSelect(measureId, { skipHistory = false } = {}) {
 function handleVisualSelect(visualId, { skipHistory = false } = {}) {
   if (!state.graph) return;
 
-  // Exit source map view if active
+  // Exit source map / model health views if active
   if (state.sourceMapVisible) {
     state.sourceMapVisible = false;
     const btn = document.getElementById('btn-source-map');
@@ -436,6 +585,7 @@ function handleVisualSelect(visualId, { skipHistory = false } = {}) {
     const sourceMapContainer = document.getElementById('source-map-container');
     if (sourceMapContainer) sourceMapContainer.classList.add('hidden');
   }
+  closeModelHealth();
 
   const node = state.graph.nodes.get(visualId);
   if (!node || node.type !== 'visual') {
@@ -450,6 +600,7 @@ function handleVisualSelect(visualId, { skipHistory = false } = {}) {
   }
   state.currentSelection = { type: 'visual', id: visualId };
   updateBackButton();
+  updateHash('visual', visualId);
 
   try {
     const lineage = traceVisualLineage(visualId, state.graph);
@@ -460,6 +611,7 @@ function handleVisualSelect(visualId, { skipHistory = false } = {}) {
     }
     renderVisualLineage(lineage, state.graph);
     selectVisual(visualId);
+    state.sessionStats.visualsExplored++;
   } catch (err) {
     console.error(`Error tracing lineage for visual ${visualId}:`, err);
     showLineageMessage(`Failed to trace lineage for visual: ${err.message}`);
@@ -471,7 +623,7 @@ function handleVisualSelect(visualId, { skipHistory = false } = {}) {
 function handlePageLayoutSelect(pageName, { skipHistory = false } = {}) {
   if (!state.graph) return;
 
-  // Exit source map view if active
+  // Exit source map / model health views if active
   if (state.sourceMapVisible) {
     state.sourceMapVisible = false;
     const btn = document.getElementById('btn-source-map');
@@ -479,6 +631,7 @@ function handlePageLayoutSelect(pageName, { skipHistory = false } = {}) {
     const sourceMapContainer = document.getElementById('source-map-container');
     if (sourceMapContainer) sourceMapContainer.classList.add('hidden');
   }
+  closeModelHealth();
 
   // Find page node by matching name or pageId
   let pageNode = null;
@@ -500,6 +653,7 @@ function handlePageLayoutSelect(pageName, { skipHistory = false } = {}) {
   }
   state.currentSelection = { type: 'page', id: pageName };
   updateBackButton();
+  updateHash('page', pageName);
 
   renderPageLayout(pageNode, state.graph);
   updateBackButton();
@@ -526,9 +680,22 @@ function handleKeyDown(event) {
     if (input) input.focus();
   }
 
-  // Escape to close source map view
-  if (event.key === 'Escape' && state.sourceMapVisible) {
-    toggleSourceMap();
+  // ? to toggle keyboard help
+  if (event.key === '?' && !event.ctrlKey && !event.metaKey) {
+    const active = document.activeElement;
+    if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) return;
+    event.preventDefault();
+    toggleKeyboardHelp();
+  }
+
+  // Escape to close source map view, keyboard help
+  if (event.key === 'Escape') {
+    const helpPopover = document.getElementById('keyboard-help-popover');
+    if (helpPopover && !helpPopover.classList.contains('hidden')) {
+      helpPopover.classList.add('hidden');
+      return;
+    }
+    if (state.sourceMapVisible) toggleSourceMap();
   }
 
   // Alt+Left to go back in navigation history
@@ -606,6 +773,252 @@ function clearWelcomeError() {
     el.textContent = '';
     el.classList.add('hidden');
   }
+}
+
+// --- Deep Links (URL Hash) ---
+
+function updateHash(type, id) {
+  const encoded = encodeURIComponent(id);
+  const hash = `#${type}=${encoded}`;
+  if (window.location.hash !== hash) {
+    history.replaceState(null, '', hash);
+  }
+}
+
+function parseHash() {
+  const hash = window.location.hash.slice(1); // remove #
+  if (!hash) return null;
+  const eqIdx = hash.indexOf('=');
+  if (eqIdx < 0) return null;
+  const type = hash.slice(0, eqIdx);
+  const id = decodeURIComponent(hash.slice(eqIdx + 1));
+  if (type === 'measure' || type === 'visual' || type === 'page') {
+    return { type, id };
+  }
+  return null;
+}
+
+function restoreFromHash() {
+  if (!state.graph) return;
+  const target = parseHash();
+  if (!target) return;
+  if (target.type === 'measure') {
+    handleMeasureSelect(target.id, { skipHistory: true });
+  } else if (target.type === 'visual') {
+    handleVisualSelect(target.id, { skipHistory: true });
+  } else if (target.type === 'page') {
+    handlePageLayoutSelect(target.id, { skipHistory: true });
+  }
+}
+
+function handleHashNavigation() {
+  if (!state.graph) return;
+  restoreFromHash();
+}
+
+// --- Drag & Drop ---
+
+function initDragAndDrop() {
+  const overlay = document.getElementById('welcome-overlay');
+  if (!overlay) return;
+
+  overlay.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    overlay.classList.add('drag-over');
+  });
+
+  overlay.addEventListener('dragleave', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    overlay.classList.remove('drag-over');
+  });
+
+  overlay.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    overlay.classList.remove('drag-over');
+
+    // Use File System Access API via DataTransferItem.getAsFileSystemHandle()
+    const items = [...e.dataTransfer.items];
+    for (const item of items) {
+      if (item.kind === 'file' && item.getAsFileSystemHandle) {
+        try {
+          const handle = await item.getAsFileSystemHandle();
+          if (handle.kind === 'directory') {
+            await handleDroppedDirectory(handle);
+            return;
+          }
+        } catch (err) {
+          console.warn('getAsFileSystemHandle not supported:', err);
+        }
+      }
+    }
+
+    // Fallback: try webkitGetAsEntry for directory reading
+    const entries = [];
+    for (const item of items) {
+      if (item.kind === 'file' && item.webkitGetAsEntry) {
+        const entry = item.webkitGetAsEntry();
+        if (entry) entries.push(entry);
+      }
+    }
+
+    if (entries.length > 0 && entries[0].isDirectory) {
+      await handleDroppedWebkitEntry(entries[0]);
+      return;
+    }
+
+    showWelcomeError('Please drop a PBIP project folder (not individual files).');
+  });
+}
+
+async function handleDroppedDirectory(dirHandle) {
+  try {
+    clearWelcomeError();
+    showLoadingProgress('Reading dropped folder...', 10);
+
+    const allFiles = new Map();
+    await readDirectoryRecursive(dirHandle, '', allFiles);
+
+    if (allFiles.size === 0) {
+      hideLoadingOverlay();
+      showWelcomeError('No files found in the dropped folder.');
+      return;
+    }
+
+    const modelFiles = new Map();
+    const reportFiles = new Map();
+
+    for (const [path, content] of allFiles) {
+      if (path.includes('.SemanticModel/') || path.includes('definition/')) {
+        // Strip to relative path within model
+        const relPath = path.replace(/^.*?\.SemanticModel\//, '').replace(/^.*?definition\//, 'definition/');
+        modelFiles.set(relPath, content);
+      }
+      if (path.includes('.Report/') || path.includes('report/')) {
+        const relPath = path.replace(/^.*?\.Report\//, '').replace(/^.*?report\/definition\//, 'definition/');
+        reportFiles.set(relPath, content);
+      }
+    }
+
+    // If no clear structure found, try flat structure
+    if (modelFiles.size === 0 && reportFiles.size === 0) {
+      for (const [path, content] of allFiles) {
+        if (path.endsWith('.tmdl')) {
+          modelFiles.set(path, content);
+        } else if (path.endsWith('.json') && path.includes('visual')) {
+          reportFiles.set(path, content);
+        }
+      }
+    }
+
+    const modelStructure = modelFiles.size > 0 ? identifyProjectStructure(modelFiles) : null;
+    const reportStructure = reportFiles.size > 0 ? identifyProjectStructure(reportFiles) : null;
+
+    const projectResult = {
+      reportName: dirHandle.name || 'Dropped Project',
+      reportStructure,
+      semanticModelPath: null,
+      modelName: dirHandle.name || 'Dropped Model',
+      modelStructure,
+    };
+
+    await loadProjectResult(projectResult);
+  } catch (err) {
+    hideLoadingOverlay();
+    console.error('Error processing dropped folder:', err);
+    showWelcomeError(`Failed to load dropped folder: ${err.message}`);
+  }
+}
+
+async function readDirectoryRecursive(dirHandle, basePath, result) {
+  for await (const entry of dirHandle.values()) {
+    const entryPath = basePath ? `${basePath}/${entry.name}` : entry.name;
+    if (entry.kind === 'file') {
+      try {
+        const file = await entry.getFile();
+        // Only read text files (.tmdl, .json, .xml)
+        if (/\.(tmdl|json|xml)$/i.test(entry.name)) {
+          const content = await file.text();
+          result.set(entryPath, content);
+        }
+      } catch { /* skip unreadable files */ }
+    } else if (entry.kind === 'directory') {
+      // Skip common non-relevant directories
+      if (entry.name === 'node_modules' || entry.name === '.git' || entry.name === 'dist') continue;
+      await readDirectoryRecursive(entry, entryPath, result);
+    }
+  }
+}
+
+async function handleDroppedWebkitEntry(dirEntry) {
+  try {
+    clearWelcomeError();
+    showLoadingProgress('Reading dropped folder...', 10);
+
+    const allFiles = new Map();
+    await readWebkitDirectoryRecursive(dirEntry, '', allFiles);
+
+    if (allFiles.size === 0) {
+      hideLoadingOverlay();
+      showWelcomeError('No supported files found in the dropped folder.');
+      return;
+    }
+
+    const modelFiles = new Map();
+    const reportFiles = new Map();
+    for (const [path, content] of allFiles) {
+      if (path.endsWith('.tmdl')) modelFiles.set(path, content);
+      else if (path.endsWith('.json')) reportFiles.set(path, content);
+    }
+
+    const modelStructure = modelFiles.size > 0 ? identifyProjectStructure(modelFiles) : null;
+    const reportStructure = reportFiles.size > 0 ? identifyProjectStructure(reportFiles) : null;
+
+    const projectResult = {
+      reportName: dirEntry.name || 'Dropped Project',
+      reportStructure,
+      semanticModelPath: null,
+      modelName: dirEntry.name || 'Dropped Model',
+      modelStructure,
+    };
+
+    await loadProjectResult(projectResult);
+  } catch (err) {
+    hideLoadingOverlay();
+    console.error('Error processing dropped folder:', err);
+    showWelcomeError(`Failed to load dropped folder: ${err.message}`);
+  }
+}
+
+function readWebkitDirectoryRecursive(dirEntry, basePath, result) {
+  return new Promise((resolve) => {
+    const reader = dirEntry.createReader();
+    const readEntries = () => {
+      reader.readEntries(async (entries) => {
+        if (entries.length === 0) { resolve(); return; }
+        for (const entry of entries) {
+          const entryPath = basePath ? `${basePath}/${entry.name}` : entry.name;
+          if (entry.isFile && /\.(tmdl|json|xml)$/i.test(entry.name)) {
+            const content = await new Promise((res) => {
+              entry.file((file) => {
+                const reader = new FileReader();
+                reader.onload = () => res(reader.result);
+                reader.onerror = () => res('');
+                reader.readAsText(file);
+              });
+            });
+            if (content) result.set(entryPath, content);
+          } else if (entry.isDirectory && !['node_modules', '.git', 'dist'].includes(entry.name)) {
+            await readWebkitDirectoryRecursive(entry, entryPath, result);
+          }
+        }
+        readEntries(); // Continue reading (batched by browser)
+      });
+    };
+    readEntries();
+  });
 }
 
 // --- Start ---
