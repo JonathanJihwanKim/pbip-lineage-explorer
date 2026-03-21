@@ -1,217 +1,71 @@
 # PBIP Lineage Explorer
 
-**Trace DAX measure lineage from visuals to source columns in Power BI PBIP projects — instantly, in your browser.**
+**Stop spending hours manually tracing DAX dependencies.** Open your PBIP folder, click a measure or visual, and see the full lineage tree — from visuals down to source columns — in seconds.
 
-[![Try It Now](https://img.shields.io/badge/Try%20It%20Now-▶%20Live%20Demo-1a3a5c?style=for-the-badge&logo=powerbi)](https://jonathanjihwankim.github.io/pbip-lineage-explorer/)
-[![Fund This Tool](https://img.shields.io/badge/Fund_This_Tool-❤_from_7_EUR/mo-ea4aaa?style=for-the-badge)](https://github.com/sponsors/JonathanJihwanKim)
-[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-☕-orange?style=for-the-badge)](https://buymeacoffee.com/jihwankim)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)](LICENSE)
+[![Try Live Demo](https://img.shields.io/badge/Try%20Live%20Demo-▶%20Open%20in%20Browser-28a745?style=for-the-badge&logo=powerbi)](https://jonathanjihwankim.github.io/pbip-lineage-explorer/)
+[![Sponsor](https://img.shields.io/badge/Sponsor-❤%20Support%20This%20Tool-ea4aaa?style=for-the-badge&logo=github-sponsors)](https://github.com/sponsors/JonathanJihwanKim)
 
-> **No PBIP file?** [Try the live demo with sample data](https://jonathanjihwankim.github.io/pbip-lineage-explorer/) — no setup required.
+![GitHub stars](https://img.shields.io/github/stars/JonathanJihwanKim/pbip-lineage-explorer?style=flat) Built by a **Microsoft MVP** · Free forever · 100% client-side · [MIT License](LICENSE)
 
 ![PBIP Lineage Explorer Screenshot](docs/screenshot.png)
 
+> **No PBIP file?** [Try it now with built-in sample data](https://jonathanjihwankim.github.io/pbip-lineage-explorer/) — no setup required.
+
 ---
 
-## Why This Tool?
+## The Problem
 
-If you've ever spent hours clicking through Power BI files trying to figure out which source columns feed into a KPI, or which visuals break when you rename a measure — this tool exists because of that pain.
+- You rename a column and 3 reports break. **You have no idea which ones.**
+- You need to document lineage for a data engineer. You open **47 TMDL files** and start copy-pasting.
+- You want to know if a measure is used anywhere. You **search manually across every visual JSON file.**
+- You need to trace a KPI back to its source columns. You click through **Power BI Desktop for an hour.**
 
-PBIP Lineage Explorer reads your Power BI Project (PBIP) files directly in the browser and builds an interactive lineage graph in seconds. No uploads, no server, no installs.
-
-### Manual lineage tracing vs. PBIP Lineage Explorer
+**Each of these takes hours. This tool does it in seconds.**
 
 | | Manual | PBIP Lineage Explorer |
 |---|---|---|
-| 10 tables, 20 measures, 15 visuals | Hours of work | **< 10 seconds** |
-| Visual → measure → column chain | Copy-paste across files | Built-in graph |
-| Impact analysis (what breaks if I remove this?) | Not feasible | One click |
-| Source column mapping (before rename) | Spreadsheet archaeology | Automatic |
-| Keeps up with model changes | Start over | Re-run instantly |
-| Privacy | Varies | 100% client-side |
+| 10 tables, 20 measures, 15 visuals | Hours of clicking through files | **< 10 seconds** |
+| Visual → measure → column chain | Copy-paste across dozens of files | **One-click interactive graph** |
+| Impact analysis ("what breaks?") | Not feasible at scale | **One click** |
+| Source column mapping before rename | Spreadsheet archaeology | **Automatic** |
 
 ---
 
-## Features
+## What You Get
 
-### For Power BI Developers
-
-- **Cross-folder lineage** — follows references across TMDL model definitions and PBIR visual configurations
-- **DAX measure chain** — see the full dependency tree with syntax-highlighted DAX expressions
-- **Impact analysis** — select any node to see upstream dependencies and downstream consumers
-- **Field parameter & calculation group detection** — identifies advanced patterns automatically
-- **Orphan detection** — find unused measures that no visual references
-- **Interactive D3 graph** — tree layout with zoom, pan, search, and filtering
-- **View Page Layout** — see a scaled replica of your report page with every visual positioned exactly as in Power BI. Click any visual to trace its full lineage. Hover for measure and column details
-- **Copy DAX** — one-click copy of any measure's DAX expression
-
-### For Data Engineers
-
-- **Source Column Mapping** — dedicated view showing all columns mapped from PBI names back to original source columns
-- **Column rename tracking** — see the full rename chain: Original Source → PQ Column → PBI Column
-- **CSV export** — download the source mapping table for documentation or tickets
-- **Copy lineage as text** — paste lineage summaries into Confluence, Jira, or Slack
-- **Data source identification** — SQL Server, BigQuery, Fabric Lakehouse, Web APIs, Excel, CSV
-
-### Export
-
-- **SVG** — scalable vector graphic, ideal for documentation
-- **PNG** — raster image for reports and presentations
-- **CSV** — source column mapping table
-- **Text** — copy lineage summaries to clipboard
+- **Visual-to-source lineage in one click** — trace any measure or visual through its full dependency chain
+- **DAX dependency tree** — see every referenced measure and column with syntax-highlighted DAX
+- **Impact analysis** — select any node to instantly see what breaks if you change it
+- **Page layout minimap** — see every visual on a report page, positioned exactly as in Power BI, and click to trace lineage
+- **Source column mapping** — flat table showing PBI Column → Source Column with full rename chain tracking
+- **Orphan detection** — find measures that no visual references
+- **Field parameter & calculation group detection** — advanced patterns identified automatically
+- **Export** — SVG, PNG, CSV, or copy lineage as text to clipboard
 
 > Your files never leave your browser. All parsing happens client-side — nothing is uploaded anywhere.
-
-### View Page Layout
-
-Ever wondered what's actually on a report page without opening Power BI Desktop? The **View Page Layout** feature renders a minimap of your report page — every visual shown as a rectangle at its exact position, size, and stacking order.
-
-**How to open it:** In the left sidebar, switch to the **Visuals** tab and click the golden grid icon next to any page name.
-
-**What you see:**
-- Each visual is a rectangle labeled with its **type** (Bar, Table, KPI...), **title**, **measure count** (m), and **field count** (f)
-- Visuals are color-coded by category — charts (blue), tables (purple), cards (green), filters (orange)
-- Grouped and nested visuals are resolved to their absolute positions automatically
-- Hidden visuals are filtered out; visuals without position data are listed separately below the map
-
-**What you can do:**
-- **Click** any visual to instantly trace its full lineage (measures, columns, sources)
-- **Hover** to see a tooltip listing all measures, field parameters, and columns the visual references
-
-This gives you a bird's-eye view of a report page and a fast way to jump into lineage tracing for any visual.
 
 ---
 
 ## Quick Start
 
-> **Requires Chrome 86+ or Edge 86+** (uses the [File System Access API](https://developer.mozilla.org/en-US/docs/Web/API/File_System_API)). Firefox and Safari are not supported.
+1. Open **[jonathanjihwankim.github.io/pbip-lineage-explorer](https://jonathanjihwankim.github.io/pbip-lineage-explorer/)**
+2. Click **Open Project Folder** and select your PBIP project root (the folder with `.SemanticModel` and `.Report` subfolders)
+3. Click any measure or visual in the sidebar to trace its lineage
+4. Use **Export** buttons to save the lineage graph as SVG/PNG or source mappings as CSV
 
-1. Open the tool: **[jonathanjihwankim.github.io/pbip-lineage-explorer](https://jonathanjihwankim.github.io/pbip-lineage-explorer/)**
-2. Click **Open Project Folder** and select the root of your PBIP project (the folder containing `.SemanticModel` and `.Report` subfolders)
-3. The lineage graph renders immediately — click any measure or visual to trace dependencies
-4. Use the **Measures** tab (left sidebar) to browse measures by table, or switch to the **Visuals** tab to browse by page
-5. Click the golden grid icon next to a page name to open the **View Page Layout** minimap
-
-> **No PBIP project handy?** Click **Load Sample Data** on the welcome screen to explore the tool with a built-in demo project — no files needed.
+> Requires **Chrome 86+** or **Edge 86+** ([File System Access API](https://developer.mozilla.org/en-US/docs/Web/API/File_System_API)). Firefox and Safari are not supported.
 
 ---
 
-## UI Overview
+## Support This Project
 
-| Area | What it does |
-|------|-------------|
-| **Left sidebar — Measures tab** | Browse all measures grouped by table. Search by name, toggle "Orphans only" to find unused measures. Click a measure to trace its lineage. |
-| **Left sidebar — Visuals tab** | Browse visuals grouped by page. Click a visual to trace its measures. Click the grid icon next to a page name to open the **View Page Layout** minimap. |
-| **Main area** | Displays the lineage graph (D3 tree), page layout view, or source column map — depending on your selection. |
-| **Toolbar** | Open Project, export buttons (SVG, PNG, CSV), and the Source Map toggle. |
+This tool is **free forever** — no premium tiers, no paywalls, no ads. Built and maintained solo by [Jihwan Kim](https://github.com/JonathanJihwanKim) (Microsoft MVP).
 
-### Keyboard Shortcuts
-
-| Shortcut | Action |
-|----------|--------|
-| `/` | Focus the measure search box |
-| `Esc` | Close the source map view |
-
----
-
-## Use Cases
-
-### Questions Power BI Developers Ask
-
-- **"Which visuals break if I rename this column?"** — Select the column and see all downstream visuals instantly
-- **"What measures are unused in my model?"** — Enable the orphan filter to find measures with no visual consumers
-- **"How is this KPI calculated?"** — Click the measure to see its full DAX dependency chain
-- **"Does this visual use a field parameter?"** — FP and CG badges are detected and shown automatically
-- **"What does this report page look like and what's on it?"** — Click the grid icon next to any page to see a visual map of the entire page layout
-
-### Questions Data Engineers Ask Power BI Developers
-
-- **"What source columns does this measure use?"** — Open Source Map to see the full PBI Column → Source Column mapping
-- **"What's the original column name before Power BI renamed it?"** — Rename chains show the full path: `SalesAmount → Amount → Amount`
-- **"Which tables from our data warehouse are used in this report?"** — Source lineage traces all the way to BigQuery, SQL Server, or Fabric
-- **"Can I get this mapping as a CSV?"** — Click Export CSV in the Source Map view
-- **"How is this DAX measure actually calculated?"** — The DAX chain shows the formula with syntax highlighting and column references
-
----
-
-## How It Works
-
-1. The app reads `.tmdl` and `.pbir` files directly from your local file system using the [File System Access API](https://developer.mozilla.org/en-US/docs/Web/API/File_System_API)
-2. It parses tables, columns, measures, relationships, DAX expressions, and visual configurations
-3. A lineage graph is built with nodes (tables, columns, measures, visuals, sources) and edges (dependencies)
-4. Click any node to trace upstream sources and downstream consumers
-5. The Source Map view provides a flat, searchable table of all column mappings
-
----
-
-## Browser Support
-
-Requires the [File System Access API](https://developer.mozilla.org/en-US/docs/Web/API/File_System_Access_API):
-- ✅ Chrome 86+
-- ✅ Edge 86+
-- ✅ Opera 72+
-- ❌ Firefox (not supported)
-- ❌ Safari (not supported)
-
----
-
-## VS Code Extension
-
-PBIP Lineage Explorer is also available as a VS Code extension for developers who work directly in PBIP/TMDL files.
-
-- Search **"PBIP Lineage Explorer"** in the VS Code Extensions marketplace and install
-- The extension auto-activates when your workspace contains `.tmdl` files
-- **Sidebar panels**: Measure Explorer, Orphan Measures, Model Stats
-- **CodeLens**: inline "Trace Lineage" links appear above measure definitions in `.tmdl` files — click to view the lineage graph without leaving your editor
-
----
-
-## PBIP Folder Structure
-
-The tool expects a standard PBIP project structure:
-
-```
-MyProject/
-├── MyProject.SemanticModel/
-│   └── definition/
-│       ├── database.tmdl
-│       ├── model.tmdl
-│       ├── relationships.tmdl
-│       ├── tables/
-│       │   ├── Sales.tmdl
-│       │   ├── Product.tmdl
-│       │   └── ...
-│       └── expressions.tmdl (optional)
-├── MyProject.Report/ (optional, for visual lineage)
-│   └── definition/
-│       └── pages/
-│           └── Page1/
-│               ├── page.json
-│               └── visuals/
-│                   └── visual1/
-│                       └── visual.json
-```
-
----
-
-## Support Development
-
-This tool is **free forever** — built and maintained solo by [Jihwan Kim](https://github.com/JonathanJihwanKim) (Microsoft MVP). If PBIP Lineage Explorer saves you even 30 minutes of lineage tracing, please consider sponsoring.
-
-Every contribution goes directly toward new features, maintenance, and keeping this tool free for the entire Power BI community.
+If PBIP Lineage Explorer saves you even 30 minutes of lineage tracing, please consider sponsoring. **Your support is the only funding this project has.**
 
 **Funding goal: 0 / 200 EUR per month** `░░░░░░░░░░░░░░░░░░░░ 0%`
 
-### Why Sponsor?
-
-- **Solo developer** — your support is the only funding this project has
-- **Free forever** — no premium tiers, no paywalls, no ads
-- **Active development** — new features ship regularly based on community feedback
-- **Open source** — your sponsorship keeps open-source Power BI tooling alive
-
 <a href="https://github.com/sponsors/JonathanJihwanKim"><img src="https://img.shields.io/badge/GitHub%20Sponsors-❤%20Monthly%20from%207%20EUR-ea4aaa?style=for-the-badge" alt="GitHub Sponsors" /></a> <a href="https://buymeacoffee.com/jihwankim"><img src="https://img.shields.io/badge/Buy%20Me%20a%20Coffee-☕%20One--time%20support-orange?style=for-the-badge" alt="Buy Me a Coffee" /></a>
-
-### Sponsor Tiers
 
 | Tier | Amount | Recognition |
 |------|--------|-------------|
@@ -225,6 +79,17 @@ Every contribution goes directly toward new features, maintenance, and keeping t
 
 ---
 
+## VS Code Extension
+
+Also available as a VS Code extension for developers who work directly in PBIP/TMDL files.
+
+- Search **"PBIP Lineage Explorer"** in the VS Code Extensions marketplace
+- Auto-activates when your workspace contains `.tmdl` files
+- **Sidebar panels**: Measure Explorer, Orphan Measures, Model Stats
+- **CodeLens**: inline "Trace Lineage" links above measure definitions — click to view lineage without leaving your editor
+
+---
+
 ## Also by Jihwan Kim
 
 | Tool | Description |
@@ -232,14 +97,17 @@ Every contribution goes directly toward new features, maintenance, and keeping t
 | [PBIP Documenter](https://jonathanjihwankim.github.io/pbip-documenter/) | Generate full documentation from PBIP/TMDL semantic models |
 | [PBIR Visual Manager](https://jonathanjihwankim.github.io/isHiddenInViewMode/) | Manage visual properties in Power BI PBIR reports |
 | [PBIP Impact Analyzer](https://jonathanjihwankim.github.io/pbip-impact-analyzer/) | Analyze dependencies and safely refactor semantic models |
-| **PBIP Lineage Explorer** | Trace visual-to-column lineage (you are here) |
 
 ---
 
-## Contributing
+## More
 
-Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
+- [Detailed reference guide](docs/reference.md) — UI overview, keyboard shortcuts, use cases, folder structure
+- [Contributing](CONTRIBUTING.md) — development setup and PR guidelines
+- [License](LICENSE) — MIT
 
-## License
+---
 
-[MIT](LICENSE) — Jihwan Kim
+If PBIP Lineage Explorer helps your team, please [sponsor the project](https://github.com/sponsors/JonathanJihwanKim) to keep it free and actively maintained.
+
+<a href="https://github.com/sponsors/JonathanJihwanKim"><img src="https://img.shields.io/badge/Sponsor-❤-ea4aaa?style=flat-square" alt="Sponsor" /></a> <a href="https://buymeacoffee.com/jihwankim"><img src="https://img.shields.io/badge/Buy%20Me%20a%20Coffee-☕-orange?style=flat-square" alt="Buy Me a Coffee" /></a>
