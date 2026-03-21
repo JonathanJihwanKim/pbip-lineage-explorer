@@ -189,7 +189,7 @@ export function parseTableFile(content, fileName) {
  * @returns {{ name: string, dataType: string, sourceColumn: string, expression: string|null }}
  */
 function parseColumnBlock(lines, startIndex, name) {
-  const col = { name, dataType: '', sourceColumn: '', expression: null };
+  const col = { name, dataType: '', sourceColumn: '', expression: null, isHidden: false };
   const baseIndent = getIndentLevel(lines[startIndex]);
   let i = startIndex + 1;
 
@@ -200,6 +200,12 @@ function parseColumnBlock(lines, startIndex, name) {
 
     const indent = getIndentLevel(line);
     if (indent <= baseIndent) break;
+
+    if (trimmed === 'isHidden') {
+      col.isHidden = true;
+      i++;
+      continue;
+    }
 
     const propMatch = trimmed.match(/^(\w+)\s*[:=]\s*(.+)$/);
     if (propMatch) {
@@ -233,6 +239,12 @@ function parseMeasureProperties(lines, startIndex) {
 
     const indent = getIndentLevel(line);
     if (indent <= baseIndent) break;
+
+    if (trimmed === 'isHidden') {
+      props.isHidden = true;
+      i++;
+      continue;
+    }
 
     const propMatch = trimmed.match(/^(\w+)\s*:\s*(.+)$/);
     if (propMatch) {

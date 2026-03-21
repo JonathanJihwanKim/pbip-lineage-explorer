@@ -34,7 +34,6 @@ const state = {
   measureSelectCount: 0,
   navigationHistory: [], // stack of { type: 'measure'|'visual', id: string }
   currentSelection: null, // { type: 'measure'|'visual', id: string }
-  firstLineageTraced: false, // tracks if user has traced at least one lineage
   sessionStats: { measuresTraced: 0, columnsmapped: 0, visualsExplored: 0 },
 };
 
@@ -85,6 +84,22 @@ function init() {
   const btnModelHealth = document.getElementById('btn-model-health');
   if (btnModelHealth) btnModelHealth.addEventListener('click', () => {
     if (state.graph) toggleModelHealth(state.graph);
+  });
+
+  // Bulk Export
+  const btnBulkExport = document.getElementById('btn-bulk-export');
+  if (btnBulkExport) btnBulkExport.addEventListener('click', () => {
+    if (state.graph) handleBulkExport();
+  });
+
+  // Sponsor overlay
+  const btnSponsorPage = document.getElementById('btn-sponsor-page');
+  if (btnSponsorPage) btnSponsorPage.addEventListener('click', toggleSponsorOverlay);
+  const sponsorOverlayClose = document.getElementById('sponsor-overlay-close');
+  if (sponsorOverlayClose) sponsorOverlayClose.addEventListener('click', toggleSponsorOverlay);
+  const sponsorOverlay = document.getElementById('sponsor-overlay');
+  if (sponsorOverlay) sponsorOverlay.addEventListener('click', (e) => {
+    if (e.target === sponsorOverlay) toggleSponsorOverlay();
   });
 
   // Toast close
@@ -151,13 +166,15 @@ function toggleSourceMap() {
 
 // --- Toast ---
 
-function showSponsorToast(lineageDepth) {
+function showSponsorToast() {
   if (sessionStorage.getItem('pbip-toast-shown')) return;
+  const traceCount = state.sessionStats.measuresTraced;
+  if (traceCount < 3) return; // Wait until user has traced 3+ items
   const toast = document.getElementById('sponsor-toast');
   const messageEl = document.getElementById('toast-message');
   if (toast && messageEl) {
-    const depthText = lineageDepth ? `${lineageDepth} layers of dependencies` : 'a full dependency chain';
-    messageEl.innerHTML = `You just traced ${depthText} in seconds. This tool is free forever &mdash; <a href="https://github.com/sponsors/JonathanJihwanKim" target="_blank" rel="noopener">sponsor to keep it that way</a>.`;
+    const minutesSaved = traceCount * 15;
+    messageEl.innerHTML = `You've traced ${traceCount} dependency chains this session &mdash; that's roughly ${minutesSaved} minutes of manual DAX tracing saved. This tool is free forever. <a href="https://github.com/sponsors/JonathanJihwanKim" target="_blank" rel="noopener">Sponsors keep it that way</a>.`;
     toast.classList.remove('hidden');
     sessionStorage.setItem('pbip-toast-shown', '1');
   }
@@ -186,9 +203,92 @@ function updateValueCounter() {
   if (columnsmapped > 0) parts.push(`${columnsmapped} column${columnsmapped !== 1 ? 's' : ''} mapped`);
   if (visualsExplored > 0) parts.push(`${visualsExplored} visual${visualsExplored !== 1 ? 's' : ''} explored`);
   if (parts.length > 0) {
-    counter.innerHTML = `${parts.join(' &middot; ')} in this session &mdash; <a href="https://github.com/sponsors/JonathanJihwanKim" target="_blank" rel="noopener">free forever</a>`;
+    // Milestone messages at 5 and 10 traces
+    let milestoneText = '';
+    if (measuresTraced === 5) {
+      milestoneText = ' &mdash; that\'s hours of manual work saved';
+      counter.classList.add('milestone');
+      setTimeout(() => counter.classList.remove('milestone'), 1000);
+    } else if (measuresTraced === 10) {
+      milestoneText = ' &mdash; power user! You\'re saving serious time';
+      counter.classList.add('milestone');
+      setTimeout(() => counter.classList.remove('milestone'), 1000);
+    }
+
+    counter.innerHTML = `${parts.join(' &middot; ')} in this session${milestoneText} &mdash; <a href="https://github.com/sponsors/JonathanJihwanKim" target="_blank" rel="noopener">free forever</a>`;
     counter.classList.remove('hidden');
   }
+}
+
+// --- Sponsor Overlay ---
+
+function toggleSponsorOverlay() {
+  const overlay = document.getElementById('sponsor-overlay');
+  if (overlay) overlay.classList.toggle('hidden');
+}
+
+// --- Bulk Export ---
+
+function handleBulkExport() {
+  if (!state.graph) return;
+
+  const measureNodes = [];
+  for (const node of state.graph.nodes.values()) {
+    if (node.type === 'measure') measureNodes.push(node);
+  }
+
+  const rows = [['Measure', 'Table', 'DAX Expression', 'PBI Table', 'PBI Column', 'Data Type', 'Hidden', 'Source Column', 'Source Table', 'Mode', 'Renamed', 'Used By Visuals']];
+
+  for (const node of measureNodes) {
+    try {
+      const lineage = traceMeasureLineage(node.id, state.graph);
+      if (!lineage) continue;
+
+      const visualNames = (lineage.visuals || []).map(v => v.title || v.name || v.id).join('; ');
+
+      if (lineage.sourceTable && lineage.sourceTable.length > 0) {
+        for (const row of lineage.sourceTable) {
+          rows.push([
+            node.name,
+            node.metadata?.table || '',
+            (node.metadata?.expression || '').replace(/\n/g, ' ').substring(0, 200),
+            row.pbiTable,
+            row.pbiColumn,
+            row.dataType || '',
+            row.isHidden ? 'Yes' : '',
+            row.sourceColumn,
+            row.sourceTable,
+            row.mode,
+            row.renamed ? 'Yes' : '',
+            visualNames,
+          ]);
+        }
+      } else {
+        rows.push([
+          node.name,
+          node.metadata?.table || '',
+          (node.metadata?.expression || '').replace(/\n/g, ' ').substring(0, 200),
+          '', '', '', '', '', '', '', '',
+          visualNames,
+        ]);
+      }
+    } catch {
+      // Skip measures that fail to trace
+    }
+  }
+
+  // Build CSV
+  const csv = rows.map(row =>
+    row.map(cell => `"${String(cell || '').replace(/"/g, '""')}"`).join(',')
+  ).join('\n');
+
+  const footer = '\n"Traced with PBIP Lineage Explorer | Sponsor: https://github.com/sponsors/JonathanJihwanKim"';
+  const blob = new Blob([csv + footer], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = `lineage-export-${state.reportName || 'model'}.csv`;
+  link.click();
+  URL.revokeObjectURL(link.href);
 }
 
 // --- Keyboard Help ---
@@ -393,11 +493,13 @@ async function loadProjectResult(projectResult) {
   populateVisuals(graph);
   populateSourceMapping(graph);
 
-  // Show Source Map and Model Health buttons
+  // Show toolbar buttons
   const btnSourceMap = document.getElementById('btn-source-map');
   if (btnSourceMap) btnSourceMap.classList.remove('hidden');
   const btnModelHealth = document.getElementById('btn-model-health');
   if (btnModelHealth) btnModelHealth.classList.remove('hidden');
+  const btnBulkExportShow = document.getElementById('btn-bulk-export');
+  if (btnBulkExportShow) btnBulkExportShow.classList.remove('hidden');
 
   // Show orphan filter
   const filterRow = document.getElementById('measure-filter-row');
@@ -560,12 +662,8 @@ function handleMeasureSelect(measureId, { skipHistory = false } = {}) {
     state.sessionStats.columnsmapped += lineage.sourceTable?.length || 0;
     updateValueCounter();
 
-    // Sponsor toast on first successful lineage trace
-    if (!state.firstLineageTraced) {
-      state.firstLineageTraced = true;
-      const depth = lineage.chain?.length || lineage.summary?.layers?.length || 0;
-      setTimeout(() => showSponsorToast(depth), 2000);
-    }
+    // Sponsor toast after 3rd successful lineage trace (value-moment nudge)
+    setTimeout(() => showSponsorToast(), 1500);
   } catch (err) {
     console.error(`Error tracing lineage for measure ${measureId}:`, err);
     showLineageMessage(`Failed to trace lineage for "${node.name}": ${err.message}`);
@@ -702,6 +800,55 @@ function handleKeyDown(event) {
   if (event.key === 'ArrowLeft' && event.altKey) {
     event.preventDefault();
     navigateBack();
+  }
+
+  // Arrow keys to navigate sidebar items
+  if ((event.key === 'ArrowDown' || event.key === 'ArrowUp') && !event.altKey && !event.ctrlKey && !event.metaKey) {
+    const active = document.activeElement;
+    if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) return;
+
+    // Determine which list is active
+    const measuresTab = document.querySelector('.sidebar-tab[data-tab="measures"]');
+    const isMeasuresActive = measuresTab?.classList.contains('active');
+    const listId = isMeasuresActive ? 'measure-list' : 'visual-list';
+    const container = document.getElementById(listId);
+    if (!container) return;
+
+    const itemClass = isMeasuresActive ? '.measure-item' : '.visual-item';
+    const items = Array.from(container.querySelectorAll(itemClass));
+    if (items.length === 0) return;
+
+    event.preventDefault();
+    const currentActive = container.querySelector(`${itemClass}.active`);
+    let idx = currentActive ? items.indexOf(currentActive) : -1;
+
+    if (event.key === 'ArrowDown') {
+      idx = idx < items.length - 1 ? idx + 1 : 0;
+    } else {
+      idx = idx > 0 ? idx - 1 : items.length - 1;
+    }
+
+    items[idx].click();
+    items[idx].scrollIntoView({ block: 'nearest' });
+  }
+
+  // Enter to trace lineage for focused item (when sidebar has focus)
+  if (event.key === 'Enter' && !event.ctrlKey && !event.metaKey) {
+    const active = document.activeElement;
+    if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) return;
+
+    const measuresTab = document.querySelector('.sidebar-tab[data-tab="measures"]');
+    const isMeasuresActive = measuresTab?.classList.contains('active');
+    const listId = isMeasuresActive ? 'measure-list' : 'visual-list';
+    const container = document.getElementById(listId);
+    if (!container) return;
+
+    const itemClass = isMeasuresActive ? '.measure-item' : '.visual-item';
+    const currentActive = container.querySelector(`${itemClass}.active`);
+    if (currentActive) {
+      event.preventDefault();
+      currentActive.click();
+    }
   }
 }
 

@@ -82,11 +82,14 @@
       <button id="btn-source-map" class="toolbar-btn-source-map hidden" title="View Source Column Mapping" aria-label="View Source Column Mapping">
         <span class="icon" aria-hidden="true">&#128203;</span> Source Map
       </button>
+      <button id="btn-bulk-export" class="toolbar-btn-source-map hidden" title="Export all measure lineage as CSV" aria-label="Export all lineage">
+        <span class="icon" aria-hidden="true">&#128229;</span> Export All
+      </button>
       <button id="btn-keyboard-help" class="keyboard-help-btn" title="Keyboard shortcuts (?)" aria-label="Show keyboard shortcuts">?</button>
-      <a href="https://github.com/sponsors/JonathanJihwanKim" target="_blank" rel="noopener" class="toolbar-sponsor" title="Support this project">
+      <button id="btn-sponsor-page" class="toolbar-sponsor" title="Sponsors &amp; Support">
         <span class="sponsor-heart">&#9829;</span>
         <span class="sponsor-text">Sponsor</span>
-      </a>
+      </button>
     </div>
   </header>
 
@@ -262,8 +265,92 @@
       <span class="keyboard-help-desc">Close panel / source map</span>
     </div>
     <div class="keyboard-help-row">
+      <span class="keyboard-help-key">&#8593; &#8595;</span>
+      <span class="keyboard-help-desc">Navigate sidebar items</span>
+    </div>
+    <div class="keyboard-help-row">
+      <span class="keyboard-help-key">Enter</span>
+      <span class="keyboard-help-desc">Trace selected item</span>
+    </div>
+    <div class="keyboard-help-row">
       <span class="keyboard-help-key">?</span>
       <span class="keyboard-help-desc">Toggle this help</span>
+    </div>
+  </div>
+
+  <!-- Sponsors overlay -->
+  <div id="sponsor-overlay" class="overlay hidden" role="dialog" aria-label="Sponsors">
+    <div class="overlay-card sponsor-overlay-card">
+      <button id="sponsor-overlay-close" class="sponsor-overlay-close" aria-label="Close">&times;</button>
+      <h2>Support PBIP Lineage Explorer</h2>
+      <p class="sponsor-overlay-tagline">This tool is <strong>free forever</strong> &mdash; no premium tiers, no paywalls, no ads. Your sponsorship keeps it maintained and improving.</p>
+
+      <div class="sponsor-tiers">
+        <div class="sponsor-tier">
+          <div class="sponsor-tier-header">
+            <span class="sponsor-tier-name">Community</span>
+            <span class="sponsor-tier-price">7 EUR/month</span>
+          </div>
+          <ul class="sponsor-tier-benefits">
+            <li>Name on README</li>
+            <li>Sponsor badge on GitHub</li>
+          </ul>
+        </div>
+
+        <div class="sponsor-tier">
+          <div class="sponsor-tier-header">
+            <span class="sponsor-tier-name">Professional</span>
+            <span class="sponsor-tier-price">15 EUR/month</span>
+          </div>
+          <ul class="sponsor-tier-benefits">
+            <li>Name on README + in-app Sponsors wall</li>
+            <li>Early access to new features</li>
+          </ul>
+        </div>
+
+        <div class="sponsor-tier sponsor-tier-featured">
+          <div class="sponsor-tier-header">
+            <span class="sponsor-tier-name">Expert</span>
+            <span class="sponsor-tier-price">25 EUR/month</span>
+          </div>
+          <ul class="sponsor-tier-benefits">
+            <li>All Professional benefits</li>
+            <li><strong>30-min monthly "Ask a Power BI MVP" video call</strong></li>
+            <li>Ask about DAX, modeling, deployment, or anything Power BI</li>
+          </ul>
+        </div>
+
+        <div class="sponsor-tier">
+          <div class="sponsor-tier-header">
+            <span class="sponsor-tier-name">Gold</span>
+            <span class="sponsor-tier-price">50 EUR/month</span>
+          </div>
+          <ul class="sponsor-tier-benefits">
+            <li>All Expert benefits</li>
+            <li>Company logo on README and app</li>
+            <li>Priority feature requests</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="sponsor-overlay-cta">
+        <p>Learned something new? Sponsors keep this tool free for everyone.</p>
+        <div class="welcome-sponsor-buttons">
+          <a href="https://github.com/sponsors/JonathanJihwanKim" target="_blank" rel="noopener" class="sponsor-pill sponsor-pill-github">
+            <span>&#9829;</span> Become a Sponsor
+          </a>
+          <a href="https://buymeacoffee.com/jihwankim" target="_blank" rel="noopener" class="sponsor-pill sponsor-pill-coffee">
+            <span>&#9749;</span> Buy Me a Coffee
+          </a>
+        </div>
+      </div>
+
+      <div class="sponsor-overlay-wall">
+        <h3>Community Champions</h3>
+        <p class="sponsor-wall-empty">Your name could be here. <a href="https://github.com/sponsors/JonathanJihwanKim" target="_blank" rel="noopener">Become the first sponsor</a> and join the wall.</p>
+      </div>
+
+      <p class="sponsor-overlay-footer">Built by <strong>Jihwan Kim</strong> &mdash; Microsoft MVP &middot; Power BI &amp; Fabric</p>
     </div>
   </div>
 

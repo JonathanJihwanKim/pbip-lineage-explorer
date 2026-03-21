@@ -318,6 +318,56 @@ button .icon { margin-right: 4px; }
   color: #fff;
 }
 
+/* --- Measure/Column Badges --- */
+.measure-badge {
+  font-size: 9px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  margin-left: 4px;
+  vertical-align: middle;
+  font-weight: 500;
+  letter-spacing: 0.3px;
+}
+.measure-badge-orphan {
+  color: var(--text-muted);
+  opacity: 0.6;
+}
+.measure-badge-hidden {
+  color: #a0a0c0;
+  background: rgba(160, 160, 192, 0.12);
+}
+.measure-item.is-hidden-field {
+  opacity: 0.6;
+}
+.measure-item.is-hidden-field:hover,
+.measure-item.is-hidden-field.active {
+  opacity: 1;
+}
+.data-type-badge {
+  display: inline-block;
+  font-size: 9px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  margin-left: 6px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  vertical-align: middle;
+}
+.data-type-badge.dt-string { color: #6cb4ee; background: rgba(108, 180, 238, 0.12); }
+.data-type-badge.dt-int64,
+.data-type-badge.dt-double,
+.data-type-badge.dt-decimal { color: #66cc99; background: rgba(102, 204, 153, 0.12); }
+.data-type-badge.dt-dateTime,
+.data-type-badge.dt-date { color: #f0a050; background: rgba(240, 160, 80, 0.12); }
+.data-type-badge.dt-boolean { color: #b0b0c0; background: rgba(176, 176, 192, 0.12); }
+.hidden-indicator {
+  color: #a0a0c0;
+  font-size: 10px;
+  margin-left: 4px;
+  opacity: 0.7;
+  title: "Hidden from report view";
+}
+
 /* --- Lineage Results --- */
 .lineage-results {
   flex: 1; overflow-y: auto;
@@ -872,6 +922,121 @@ input:focus-visible {
   color: #ea4aaa; text-decoration: none;
 }
 .sponsor-footer a:hover { text-decoration: underline; }
+
+/* --- Sponsors Overlay --- */
+.sponsor-overlay-card {
+  max-width: 640px;
+  max-height: 85vh;
+  overflow-y: auto;
+}
+.sponsor-overlay-close {
+  position: absolute;
+  top: 12px; right: 16px;
+  background: none; border: none;
+  color: var(--text-muted); font-size: 24px;
+  cursor: pointer;
+}
+.sponsor-overlay-close:hover { color: var(--text-primary); }
+.sponsor-overlay-tagline {
+  color: var(--text-secondary);
+  font-size: 14px;
+  margin-bottom: 24px;
+}
+.sponsor-tiers {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+@media (max-width: 600px) {
+  .sponsor-tiers { grid-template-columns: 1fr; }
+}
+.sponsor-tier {
+  background: var(--bg-sidebar);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 16px;
+}
+.sponsor-tier-featured {
+  border-color: #ea4aaa;
+  box-shadow: 0 0 0 1px rgba(234, 74, 170, 0.3);
+}
+.sponsor-tier-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.sponsor-tier-name {
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--text-primary);
+}
+.sponsor-tier-price {
+  font-size: 13px;
+  color: #ea4aaa;
+  font-weight: 600;
+}
+.sponsor-tier-benefits {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.sponsor-tier-benefits li {
+  font-size: 12px;
+  color: var(--text-secondary);
+  padding: 3px 0;
+  padding-left: 16px;
+  position: relative;
+}
+.sponsor-tier-benefits li::before {
+  content: '✓';
+  position: absolute;
+  left: 0;
+  color: #66cc99;
+}
+.sponsor-overlay-cta {
+  text-align: center;
+  margin-bottom: 20px;
+}
+.sponsor-overlay-cta p {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+}
+.sponsor-overlay-wall {
+  border-top: 1px solid var(--border-color);
+  padding-top: 16px;
+  margin-bottom: 16px;
+}
+.sponsor-overlay-wall h3 {
+  font-size: 14px;
+  margin-bottom: 8px;
+}
+.sponsor-wall-empty {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.sponsor-wall-empty a {
+  color: #ea4aaa;
+  text-decoration: none;
+}
+.sponsor-wall-empty a:hover { text-decoration: underline; }
+.sponsor-overlay-footer {
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+/* --- Milestone Celebration --- */
+.value-counter.milestone {
+  animation: milestone-pulse 0.6s ease;
+}
+@keyframes milestone-pulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.02); box-shadow: 0 0 12px rgba(234, 74, 170, 0.15); }
+  100% { transform: scale(1); }
+}
 
 /* --- Empty States --- */
 .empty-state {

@@ -147,7 +147,8 @@ export function buildGraph(parsedModel, parsedReport, enrichments) {
             table: table.name,
             dataType: col.dataType,
             sourceColumn: col.sourceColumn,
-            expression: col.expression
+            expression: col.expression,
+            isHidden: col.isHidden || false
           }));
           // Column belongs to table
           edges.push(createEdge(colId, tableId, EDGE_TYPES.COLUMN_TO_TABLE));
@@ -160,7 +161,8 @@ export function buildGraph(parsedModel, parsedReport, enrichments) {
           nodes.set(measureId, createNode(measureId, measure.name, NODE_TYPES.MEASURE, {
             table: table.name,
             expression: measure.expression,
-            description: measure.description || ''
+            description: measure.description || '',
+            isHidden: measure.isHidden || false
           }));
         }
       }

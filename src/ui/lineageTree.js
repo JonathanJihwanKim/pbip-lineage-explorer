@@ -371,7 +371,7 @@ export function exportTreeAsSvg(container, filename = 'lineage-tree') {
   watermark.setAttribute('fill', '#555580');
   watermark.setAttribute('font-size', '10');
   watermark.setAttribute('font-family', '-apple-system, BlinkMacSystemFont, sans-serif');
-  watermark.textContent = 'PBIP Lineage Explorer — github.com/JonathanJihwanKim/pbip-lineage-explorer';
+  watermark.textContent = 'PBIP Lineage Explorer — free & open-source by Jihwan Kim (MVP) | Sponsor: github.com/sponsors/JonathanJihwanKim';
   clone.appendChild(watermark);
 
   const serializer = new XMLSerializer();
@@ -415,7 +415,7 @@ export function exportTreeAsPng(container, filename = 'lineage-tree') {
   watermark.setAttribute('fill', '#555580');
   watermark.setAttribute('font-size', '10');
   watermark.setAttribute('font-family', '-apple-system, BlinkMacSystemFont, sans-serif');
-  watermark.textContent = 'PBIP Lineage Explorer — github.com/JonathanJihwanKim/pbip-lineage-explorer';
+  watermark.textContent = 'PBIP Lineage Explorer — free & open-source by Jihwan Kim (MVP) | Sponsor: github.com/sponsors/JonathanJihwanKim';
   clone.appendChild(watermark);
 
   const serializer = new XMLSerializer();

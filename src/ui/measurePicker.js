@@ -51,6 +51,7 @@ export function populateMeasures(graph) {
         expression: node.metadata?.expression || '',
         description: node.metadata?.description || '',
         isOrphan,
+        isHidden: node.metadata?.isHidden || false,
       });
     }
   }
@@ -129,9 +130,10 @@ function renderList(measures) {
     html += `<summary class="measure-group-header">${escapeHtml(table)} <span class="measure-group-count">(${items.length})</span></summary>`;
     html += `<div class="measure-group-items">`;
     for (const m of items) {
-      const orphanBadge = m.isOrphan ? ' <span style="font-size:9px;color:var(--text-muted);opacity:0.6" title="Not used by any visual">orphan</span>' : '';
-      const tooltip = `${m.table}[${m.name}]${m.isOrphan ? ' (orphan)' : ''}${m.description ? '\n' + m.description : ''}\n${m.expression.substring(0, 120)}`;
-      html += `<div class="measure-item" data-id="${escapeHtml(m.id)}" title="${escapeHtml(tooltip)}">${highlightMatch(m.name, _searchQuery)}${orphanBadge}</div>`;
+      const orphanBadge = m.isOrphan ? ' <span class="measure-badge measure-badge-orphan" title="Not used by any visual">orphan</span>' : '';
+      const hiddenBadge = m.isHidden ? ' <span class="measure-badge measure-badge-hidden" title="Hidden from report view">hidden</span>' : '';
+      const tooltip = `${m.table}[${m.name}]${m.isOrphan ? ' (orphan)' : ''}${m.isHidden ? ' (hidden)' : ''}${m.description ? '\n' + m.description : ''}\n${m.expression.substring(0, 120)}`;
+      html += `<div class="measure-item${m.isHidden ? ' is-hidden-field' : ''}" data-id="${escapeHtml(m.id)}" title="${escapeHtml(tooltip)}">${highlightMatch(m.name, _searchQuery)}${hiddenBadge}${orphanBadge}</div>`;
     }
     html += `</div></details>`;
   }

@@ -317,6 +317,7 @@ function buildMeasureChain(measureNodeId, graph, visited) {
         wasRenamed: upNode.metadata?.wasRenamed || false,
         sourceTableFull: upNode.metadata?.sourceTableFull || '',
         sourceTablePath: upNode.metadata?.sourceTablePath || '',
+        isHidden: upNode.metadata?.isHidden || false,
       });
     }
   }
@@ -381,6 +382,8 @@ function buildSourceTable(measureChain, graph) {
         daxReference: `${parentMeasure || chain.name}`,
         pbiTable: col.table,
         pbiColumn: col.name,
+        dataType: col.dataType || '',
+        isHidden: col.isHidden || false,
         sourceColumn: col.sourceColumn || col.name,
         originalSourceColumn: col.originalSourceColumn || '',
         sourceTable: srcTable,
