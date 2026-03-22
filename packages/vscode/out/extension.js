@@ -155,7 +155,7 @@ function parseTableFile(content, fileName) {
   return result;
 }
 function parseColumnBlock(lines, startIndex, name) {
-  const col = { name, dataType: "", sourceColumn: "", expression: null };
+  const col = { name, dataType: "", sourceColumn: "", expression: null, isHidden: false };
   const baseIndent = getIndentLevel(lines[startIndex]);
   let i = startIndex + 1;
   while (i < lines.length) {
@@ -167,6 +167,11 @@ function parseColumnBlock(lines, startIndex, name) {
     }
     const indent = getIndentLevel(line);
     if (indent <= baseIndent) break;
+    if (trimmed === "isHidden") {
+      col.isHidden = true;
+      i++;
+      continue;
+    }
     const propMatch = trimmed.match(/^(\w+)\s*[:=]\s*(.+)$/);
     if (propMatch) {
       const key = propMatch[1].toLowerCase();
@@ -192,6 +197,11 @@ function parseMeasureProperties(lines, startIndex) {
     }
     const indent = getIndentLevel(line);
     if (indent <= baseIndent) break;
+    if (trimmed === "isHidden") {
+      props.isHidden = true;
+      i++;
+      continue;
+    }
     const propMatch = trimmed.match(/^(\w+)\s*:\s*(.+)$/);
     if (propMatch) {
       const key = propMatch[1];
@@ -324,7 +334,8 @@ function parseRefreshPolicyBlock(lines, startIndex) {
 function extractMDataSource(mExpression) {
   if (!mExpression) return null;
   const result = { server: null, database: null, schema: null, sourceTable: null, type: null };
-  const sqlMatch = mExpression.match(/Sql\.Database\s*\(\s*"([^"]+)"\s*,\s*"([^"]+)"\s*\)/i);
+  const cleanExpr = mExpression.replace(/\/\*[\s\S]*?\*\//g, "");
+  const sqlMatch = cleanExpr.match(/Sql\.Database\s*\(\s*"([^"]+)"\s*,\s*"([^"]+)"\s*\)/i);
   if (sqlMatch) {
     result.type = "SQL";
     result.server = sqlMatch[1];
@@ -333,38 +344,24 @@ function extractMDataSource(mExpression) {
   if (result.server && result.server.includes(".fabric.microsoft.com")) {
     result.type = "Fabric/Lakehouse";
   }
-  const schemaItemMatch = mExpression.match(/\{[^}]*Schema\s*=\s*"([^"]+)"[^}]*Item\s*=\s*"([^"]+)"[^}]*\}/i);
+  const schemaItemMatch = cleanExpr.match(/\{[^}]*Schema\s*=\s*"([^"]+)"[^}]*Item\s*=\s*"([^"]+)"[^}]*\}/i);
   if (schemaItemMatch) {
     result.schema = schemaItemMatch[1];
     result.sourceTable = schemaItemMatch[2];
   }
-  if (!result.sourceTable) {
-    const nameMatch = mExpression.match(/\{[^}]*Name\s*=\s*"([^"]+)"[^}]*\}/i);
+  if (!result.sourceTable && !/GoogleBigQuery/i.test(cleanExpr)) {
+    const nameMatch = cleanExpr.match(/\{[^}]*Name\s*=\s*"([^"]+)"[^}]*\}/i);
     if (nameMatch) {
       result.sourceTable = nameMatch[1];
     }
   }
-  if (!result.type) {
-    const bqMatch = mExpression.match(/GoogleBigQuery\.Database\s*\(\s*(?:"([^"]*)"|\[([^\]]*)\]|(\w+))/i);
-    if (bqMatch) {
-      result.type = "BigQuery";
-      result.server = bqMatch[1] || bqMatch[2] || bqMatch[3] || null;
-      const nameMatches = [...mExpression.matchAll(/\{\s*\[\s*(?:Name|Schema)\s*=\s*"([^"]+)"\s*\]\s*\}/gi)];
-      if (nameMatches.length >= 2) {
-        result.database = nameMatches[0][1];
-        result.sourceTable = nameMatches[1][1];
-      } else if (nameMatches.length === 1) {
-        result.database = nameMatches[0][1];
-      }
-      const bqSchemaItem = mExpression.match(/\{[^}]*Schema\s*=\s*"([^"]+)"[^}]*Item\s*=\s*"([^"]+)"[^}]*\}/i);
-      if (bqSchemaItem) {
-        result.database = bqSchemaItem[1];
-        result.sourceTable = bqSchemaItem[2];
-      }
-    }
+  const bqMatch = cleanExpr.match(/GoogleBigQuery\.Database\s*\(\s*(?:"([^"]*)"|\[([^\]]*)\]|(\w+))/i);
+  if (bqMatch && !result.type) {
+    result.type = "BigQuery";
+    result.server = bqMatch[1] || bqMatch[2] || bqMatch[3] || null;
   }
-  if (!result.sourceTable) {
-    const nativeQueryMatch = mExpression.match(/Value\.NativeQuery\s*\([^,]*,\s*"([\s\S]*?)"\s*[,)]/i);
+  if (/Value\.NativeQuery/i.test(cleanExpr)) {
+    const nativeQueryMatch = cleanExpr.match(/Value\.NativeQuery\s*\([^,]*,\s*"([\s\S]*?)"\s*[,)]/i);
     if (nativeQueryMatch) {
       const sql = nativeQueryMatch[1];
       const fromMatch = sql.match(/FROM\s+`?([A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+){1,2})`?/i);
@@ -379,9 +376,34 @@ function extractMDataSource(mExpression) {
           result.sourceTable = parts[1];
         }
       }
-      if (!result.type && (result.database || result.sourceTable)) {
-        result.type = result.type || "SQL/NativeQuery";
+    }
+    if (!result.sourceTable) {
+      const tableInBackticks = cleanExpr.match(/\.([A-Za-z_][A-Za-z0-9_]+)\.([A-Za-z_][A-Za-z0-9_]+)`/);
+      if (tableInBackticks) {
+        result.database = result.database || tableInBackticks[1];
+        result.sourceTable = tableInBackticks[2];
       }
+    }
+    if (!result.type && (result.database || result.sourceTable)) {
+      result.type = "BigQuery";
+    }
+  }
+  if (bqMatch && !result.sourceTable) {
+    const nameMatches = [...cleanExpr.matchAll(/\{\s*\[(?:[^[\]]*,\s*)?Name\s*=\s*"([^"]+)"[^\]]*\]\s*\}/gi)];
+    if (nameMatches.length >= 3) {
+      result.server = result.server || nameMatches[0][1];
+      result.database = nameMatches[nameMatches.length - 2][1];
+      result.sourceTable = nameMatches[nameMatches.length - 1][1];
+    } else if (nameMatches.length === 2) {
+      result.database = nameMatches[0][1];
+      result.sourceTable = nameMatches[1][1];
+    } else if (nameMatches.length === 1) {
+      result.sourceTable = nameMatches[0][1];
+    }
+    const bqSchemaItem = cleanExpr.match(/\{[^}]*Schema\s*=\s*"([^"]+)"[^}]*Item\s*=\s*"([^"]+)"[^}]*\}/i);
+    if (bqSchemaItem) {
+      result.database = bqSchemaItem[1];
+      result.sourceTable = bqSchemaItem[2];
     }
   }
   if (!result.server) {
@@ -411,7 +433,7 @@ function parseExpressions(content) {
     if (exprMatch) {
       const name = unquoteName(exprMatch[1].trim());
       const firstPart = exprMatch[2].trim();
-      const literalMatch = firstPart.match(/^"([^"]*)"$/);
+      const literalMatch = firstPart.match(/^"([^"]*)"(\s*meta\s*\[.*\])?\s*$/);
       if (literalMatch) {
         parameters.set(name, literalMatch[1]);
         expressions.push({ name, mExpression: literalMatch[1], kind: "parameter" });
@@ -448,8 +470,15 @@ function parseExpressions(content) {
         j++;
       }
       const mExpression = parts.join("\n").trim();
-      expressions.push({ name, mExpression, kind: mExpression ? "expression" : "parameter" });
-      if (!mExpression.includes("\n") && mExpression.startsWith('"') && mExpression.endsWith('"')) {
+      const isParameterExpr = /IsParameterQuery\s*=\s*true/i.test(mExpression) || /^#datetime\s*\(/i.test(mExpression) || /^#date\s*\(/i.test(mExpression) || /^\d+(\.\d+)?\s*(meta\b|$)/i.test(mExpression);
+      const exprKind = !mExpression || isParameterExpr ? "parameter" : "expression";
+      expressions.push({ name, mExpression, kind: exprKind });
+      if (isParameterExpr) {
+        const quotedVal = mExpression.match(/^"([^"]*)"/);
+        if (quotedVal) {
+          parameters.set(name, quotedVal[1]);
+        }
+      } else if (!mExpression.includes("\n") && mExpression.startsWith('"') && mExpression.endsWith('"')) {
         parameters.set(name, mExpression.slice(1, -1));
       }
       i = j;
@@ -687,6 +716,8 @@ function parsePbirReport(visualFiles, pageFiles) {
         name: pageName,
         displayName: config.displayName || config.name || pageName,
         order: config.ordinal ?? config.order ?? pages.length,
+        width: config.width || config.defaultSize?.width || 1280,
+        height: config.height || config.defaultSize?.height || 720,
         path
       });
     } catch (err) {
@@ -741,7 +772,8 @@ function extractPageIdFromPath(path) {
 function parseVisualConfig(config, pageName) {
   const visual = config.visual || config;
   const id = visual.id || config.id || config.name || "";
-  const visualType = visual.visualType || visual.type || config.visualType || "unknown";
+  const isGroup = !!config.visualGroup;
+  const visualType = isGroup ? "group" : visual.visualType || visual.type || config.visualType || "unknown";
   let title = "";
   if (visual.title) {
     title = typeof visual.title === "string" ? visual.title : visual.title.text || "";
@@ -755,15 +787,24 @@ function parseVisualConfig(config, pageName) {
     const titleArr = visual.vcObjects.title;
     if (Array.isArray(titleArr) && titleArr[0]?.properties?.text?.expr?.Literal?.Value) {
       title = titleArr[0].properties.text.expr.Literal.Value.replace(/^'|'$/g, "");
+    } else if (titleArr?.properties?.text?.expr?.Literal?.Value) {
+      title = titleArr.properties.text.expr.Literal.Value.replace(/^'|'$/g, "");
     }
   }
   if (!title && visual.visualContainerObjects?.title) {
     const titleArr = visual.visualContainerObjects.title;
     if (Array.isArray(titleArr) && titleArr[0]?.properties?.text?.expr?.Literal?.Value) {
       title = titleArr[0].properties.text.expr.Literal.Value.replace(/^'|'$/g, "");
+    } else if (titleArr?.properties?.text?.expr?.Literal?.Value) {
+      title = titleArr.properties.text.expr.Literal.Value.replace(/^'|'$/g, "");
     }
   }
   const fields = extractFieldReferences(visual, config);
+  const isHidden = config.isHidden === true || visual.isHidden === true;
+  const parentGroupName = config.parentGroupName || null;
+  if (isGroup && !title && config.visualGroup?.displayName) {
+    title = config.visualGroup.displayName;
+  }
   return {
     id,
     type: visualType,
@@ -771,7 +812,10 @@ function parseVisualConfig(config, pageName) {
     page: pageName,
     pageId: pageName,
     title,
-    fields
+    fields,
+    position: config.position || null,
+    isHidden,
+    parentGroupName
   };
 }
 function extractFieldReferences(visualConfig, fullConfig) {
@@ -1074,13 +1118,29 @@ function detectFieldParameter(table) {
   const partitions = table.partitions || [];
   for (const partition of partitions) {
     const src = partition.sourceExpression || "";
+    const rowPattern = /\(\s*"([^"]+)"\s*,\s*NAMEOF\s*\(\s*(?:'([^']+)'\s*\[([^\]]+)\]|\[([^\]]+)\])\s*\)\s*,\s*(\d+)\s*\)/gi;
+    let rowMatch;
+    while ((rowMatch = rowPattern.exec(src)) !== null) {
+      const displayName = rowMatch[1];
+      const refTable = rowMatch[2];
+      const refField = rowMatch[3] || rowMatch[4];
+      const ordinal = parseInt(rowMatch[5], 10);
+      if (refTable && refField) {
+        nameofFields.push({ name: refField, reference: `'${refTable}'[${refField}]`, displayName, ordinal });
+      } else if (refField) {
+        nameofFields.push({ name: refField, reference: `[${refField}]`, displayName, ordinal });
+      }
+    }
     let m;
     nameofPattern.lastIndex = 0;
     while ((m = nameofPattern.exec(src)) !== null) {
-      if (m[1] && m[2]) {
-        nameofFields.push({ name: m[2], reference: `'${m[1]}'[${m[2]}]` });
-      } else if (m[3]) {
-        nameofFields.push({ name: m[3], reference: `[${m[3]}]` });
+      const refField = m[2] || m[3];
+      if (refField && !nameofFields.some((f) => f.name === refField)) {
+        if (m[1] && m[2]) {
+          nameofFields.push({ name: m[2], reference: `'${m[1]}'[${m[2]}]` });
+        } else if (m[3]) {
+          nameofFields.push({ name: m[3], reference: `[${m[3]}]` });
+        }
       }
     }
   }
@@ -1353,7 +1413,8 @@ function buildGraph(parsedModel, parsedReport, enrichments2) {
             table: table.name,
             dataType: col.dataType,
             sourceColumn: col.sourceColumn,
-            expression: col.expression
+            expression: col.expression,
+            isHidden: col.isHidden || false
           }));
           edges.push(createEdge(colId, tableId, EDGE_TYPES.COLUMN_TO_TABLE));
         }
@@ -1363,7 +1424,9 @@ function buildGraph(parsedModel, parsedReport, enrichments2) {
           const measureId = `measure::${table.name}.${measure.name}`;
           nodes.set(measureId, createNode(measureId, measure.name, NODE_TYPES.MEASURE, {
             table: table.name,
-            expression: measure.expression
+            expression: measure.expression,
+            description: measure.description || "",
+            isHidden: measure.isHidden || false
           }));
         }
       }
@@ -1469,41 +1532,84 @@ function buildGraph(parsedModel, parsedReport, enrichments2) {
         if (!partition.sourceExpression) continue;
         const resolvedExpr = resolveParameters(partition.sourceExpression);
         const ds = extractMDataSource(resolvedExpr);
-        if (!ds) continue;
-        const sourceKey = ds.database ? `${(ds.server || "").toLowerCase()}/${ds.database}` : (ds.server || "").toLowerCase();
-        if (!sourceKey) continue;
-        const sourceId = `source::${sourceKey}`;
-        if (!sourceNodeCache.has(sourceId)) {
-          const displayName = ds.database || ds.server || sourceKey;
-          nodes.set(sourceId, createNode(sourceId, displayName, NODE_TYPES.SOURCE, {
-            server: ds.server,
-            database: ds.database,
-            sourceType: ds.type
-          }));
-          sourceNodeCache.set(sourceId, true);
+        const trimmedSource = partition.sourceExpression.trim();
+        let linkedExprName = null;
+        let linkedExpr = null;
+        const simpleRefMatch = trimmedSource.match(/^(\w+)$/);
+        if (simpleRefMatch && expressionMap.has(simpleRefMatch[1])) {
+          linkedExprName = simpleRefMatch[1];
+          linkedExpr = expressionMap.get(linkedExprName);
         }
-        const tableId = `table::${table.name}`;
-        edges.push(createEdge(tableId, sourceId, EDGE_TYPES.TABLE_TO_SOURCE));
-        const tableNode = nodes.get(tableId);
-        if (tableNode) {
-          tableNode.metadata.dataSource = {
-            server: ds.server,
-            database: ds.database,
-            schema: ds.schema,
-            sourceTable: ds.sourceTable,
-            sourceType: ds.type,
-            mode: partition.mode
-          };
-          const renameMap = extractRenameColumns(resolvedExpr);
-          if (renameMap.size > 0) {
-            tableNode.metadata.renameMap = Object.fromEntries(renameMap);
+        if (!linkedExpr) {
+          let fallbackExprName = null;
+          let fallbackExpr = null;
+          for (const [exprName, exprObj] of expressionMap) {
+            if (exprObj.kind === "parameter") continue;
+            const escaped = exprName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            const refRegex = new RegExp(`(?<!["''\\w])` + escaped + `(?!["''\\w])`);
+            if (refRegex.test(trimmedSource)) {
+              const assignRegex = new RegExp("(?:Source\\s*=|:=)\\s*" + escaped + "\\b");
+              if (assignRegex.test(trimmedSource)) {
+                linkedExprName = exprName;
+                linkedExpr = exprObj;
+                break;
+              }
+              if (!fallbackExprName) {
+                fallbackExprName = exprName;
+                fallbackExpr = exprObj;
+              }
+            }
+          }
+          if (!linkedExpr && fallbackExprName) {
+            linkedExprName = fallbackExprName;
+            linkedExpr = fallbackExpr;
           }
         }
-        const exprRefMatch = partition.sourceExpression.match(/^\s*(\w[\w_]*)\s*$/);
-        if (exprRefMatch && expressionMap.has(exprRefMatch[1])) {
-          const exprId = `expression::${exprRefMatch[1]}`;
+        let effectiveDs = ds;
+        let effectiveExpr = resolvedExpr;
+        if (!effectiveDs && linkedExpr) {
+          effectiveExpr = resolveParameters(linkedExpr.mExpression);
+          effectiveDs = extractMDataSource(effectiveExpr);
+        }
+        if (effectiveDs) {
+          const sourceKey = effectiveDs.database ? `${(effectiveDs.server || "").toLowerCase()}/${effectiveDs.database}` : (effectiveDs.server || "").toLowerCase();
+          if (sourceKey) {
+            const sourceId = `source::${sourceKey}`;
+            if (!sourceNodeCache.has(sourceId)) {
+              const displayName = effectiveDs.database || effectiveDs.server || sourceKey;
+              nodes.set(sourceId, createNode(sourceId, displayName, NODE_TYPES.SOURCE, {
+                server: effectiveDs.server,
+                database: effectiveDs.database,
+                sourceType: effectiveDs.type
+              }));
+              sourceNodeCache.set(sourceId, true);
+            }
+            const tableId = `table::${table.name}`;
+            edges.push(createEdge(tableId, sourceId, EDGE_TYPES.TABLE_TO_SOURCE));
+            const tableNode = nodes.get(tableId);
+            if (tableNode) {
+              tableNode.metadata.dataSource = {
+                server: effectiveDs.server,
+                database: effectiveDs.database,
+                schema: effectiveDs.schema,
+                sourceTable: effectiveDs.sourceTable,
+                sourceType: effectiveDs.type,
+                mode: partition.mode
+              };
+              let renameMap = extractRenameColumns(resolvedExpr);
+              if (renameMap.size === 0 && effectiveExpr !== resolvedExpr) {
+                renameMap = extractRenameColumns(effectiveExpr);
+              }
+              if (renameMap.size > 0) {
+                tableNode.metadata.renameMap = Object.fromEntries(renameMap);
+              }
+            }
+          }
+        }
+        if (linkedExprName && linkedExpr) {
+          const exprId = `expression::${linkedExprName}`;
           if (nodes.has(exprId)) {
-            edges.push(createEdge(tableId, exprId, EDGE_TYPES.TABLE_TO_EXPRESSION));
+            edges.push(createEdge(`table::${table.name}`, exprId, EDGE_TYPES.TABLE_TO_EXPRESSION));
           }
         }
       }
@@ -1513,9 +1619,32 @@ function buildGraph(parsedModel, parsedReport, enrichments2) {
     for (const table of parsedModel.tables) {
       const tableId = `table::${table.name}`;
       const tableNode = nodes.get(tableId);
-      if (!tableNode?.metadata?.dataSource) continue;
-      const renameMap = tableNode.metadata.renameMap || {};
-      const ds = tableNode.metadata.dataSource;
+      let ds = tableNode?.metadata?.dataSource;
+      let renameMap = tableNode?.metadata?.renameMap || {};
+      if (!ds || Object.keys(renameMap).length === 0) {
+        const tableUp = function buildAdj() {
+          const up = [];
+          for (const edge of edges) {
+            if (edge.source === tableId && (edge.type === EDGE_TYPES.TABLE_TO_EXPRESSION || edge.type === EDGE_TYPES.TABLE_TO_SOURCE)) {
+              up.push(edge.target);
+            }
+          }
+          return up;
+        }();
+        for (const upId of tableUp) {
+          const upNode = nodes.get(upId);
+          if (!ds && upNode?.metadata?.dataSource) {
+            ds = upNode.metadata.dataSource;
+          }
+          if (Object.keys(renameMap).length === 0 && upNode?.type === "expression" && upNode.metadata?.mExpression) {
+            const exprRenames = extractRenameColumns(upNode.metadata.mExpression);
+            if (exprRenames.size > 0) {
+              renameMap = Object.fromEntries(exprRenames);
+            }
+          }
+        }
+      }
+      if (!ds) continue;
       for (const col of table.columns || []) {
         const colId = `column::${table.name}.${col.name}`;
         const colNode = nodes.get(colId);
@@ -1527,8 +1656,9 @@ function buildGraph(parsedModel, parsedReport, enrichments2) {
         colNode.metadata.wasRenamed = originalCol !== sourceCol;
         if (ds.sourceTable) {
           const fullTable = ds.schema ? `${ds.schema}.${ds.sourceTable}` : ds.sourceTable;
-          colNode.metadata.sourceTableFull = `${fullTable}.${originalCol}`;
-          colNode.metadata.sourceTablePath = fullTable;
+          const fullTableWithDb = ds.database ? `${ds.database}.${fullTable}` : fullTable;
+          colNode.metadata.sourceTableFull = `${fullTableWithDb}.${originalCol}`;
+          colNode.metadata.sourceTablePath = fullTableWithDb;
         }
       }
     }
@@ -1537,7 +1667,12 @@ function buildGraph(parsedModel, parsedReport, enrichments2) {
     if (parsedReport.pages) {
       for (const page of parsedReport.pages) {
         const pageId = `page::${page.id}`;
-        nodes.set(pageId, createNode(pageId, page.name, NODE_TYPES.PAGE, { pageId: page.id }));
+        nodes.set(pageId, createNode(pageId, page.name, NODE_TYPES.PAGE, {
+          pageId: page.id,
+          width: page.width || 1280,
+          height: page.height || 720,
+          ordinal: page.order ?? 0
+        }));
       }
     }
     if (parsedReport.visuals) {
@@ -1545,7 +1680,11 @@ function buildGraph(parsedModel, parsedReport, enrichments2) {
         const visualId = `visual::${visual.pageId}/${visual.id}`;
         nodes.set(visualId, createNode(visualId, visual.title || visual.visualType, NODE_TYPES.VISUAL, {
           visualType: visual.visualType,
-          pageId: visual.pageId
+          pageId: visual.pageId,
+          title: visual.title || "",
+          position: visual.position || null,
+          isHidden: visual.isHidden || false,
+          parentGroupName: visual.parentGroupName || null
         }));
         const pageId = `page::${visual.pageId}`;
         if (nodes.has(pageId)) {
@@ -1605,6 +1744,7 @@ function buildGraph(parsedModel, parsedReport, enrichments2) {
           tableNode.enrichment = { type: "field_parameter", data: fp };
         }
         const refPattern = /'([^']+)'\[([^\]]+)\]/;
+        const fpDisplayNames = {};
         for (const field of fp.fields || []) {
           const refMatch = field.reference?.match(refPattern);
           if (!refMatch) continue;
@@ -1615,7 +1755,13 @@ function buildGraph(parsedModel, parsedReport, enrichments2) {
           const targetId = nodes.has(measureId) ? measureId : nodes.has(colId) ? colId : null;
           if (targetId) {
             edges.push(createEdge(tableId, targetId, EDGE_TYPES.FIELD_PARAM_TO_FIELD));
+            if (field.displayName) {
+              fpDisplayNames[targetId] = field.displayName;
+            }
           }
+        }
+        if (tableNode && Object.keys(fpDisplayNames).length > 0) {
+          tableNode.metadata.fpDisplayNames = fpDisplayNames;
         }
       }
     }
@@ -1818,12 +1964,17 @@ function traceVisuals(measureNode, impact, graph2) {
     }
     let bindingType = "direct";
     let fieldParameterTable = "";
+    let fpDisplayName = "";
     const upNeighbors = graph2.adjacency.upstream.get(nodeId) || [];
     for (const upId of upNeighbors) {
       const upNode = graph2.nodes.get(upId);
       if (upNode && (upNode.enrichment?.type === "field_parameter" || upNode.metadata?.isFieldParameter)) {
         bindingType = "fieldParameter";
         fieldParameterTable = upNode.metadata?.table || upNode.name;
+        const displayNames = upNode.metadata?.fpDisplayNames;
+        if (displayNames && displayNames[measureNode.id]) {
+          fpDisplayName = displayNames[measureNode.id];
+        }
         break;
       }
     }
@@ -1832,7 +1983,7 @@ function traceVisuals(measureNode, impact, graph2) {
       visualType: node.metadata?.visualType || node.name,
       title: node.metadata?.title || node.name,
       id: node.id,
-      metricDisplayName: measureNode.name,
+      metricDisplayName: fpDisplayName || measureNode.name,
       metricDaxName: `${measureNode.metadata?.table || ""}.${measureNode.name}`,
       bindingType,
       fieldParameterTable
@@ -1911,11 +2062,22 @@ function traceVisualLineage(visualNodeId, graph2) {
       if (targetNode?.type === "measure") fieldParamMeasureIds.add(edge.target);
     }
   }
+  const fpDisplayNameMap = /* @__PURE__ */ new Map();
+  for (const fpTableId of referencedFpTableIds) {
+    const fpTable = graph2.nodes.get(fpTableId);
+    const displayNames = fpTable?.metadata?.fpDisplayNames;
+    if (displayNames) {
+      for (const [measureId, displayName] of Object.entries(displayNames)) {
+        fpDisplayNameMap.set(measureId, displayName);
+      }
+    }
+  }
   const measures = Array.from(directMeasureIds).map((measureId) => {
     const node = graph2.nodes.get(measureId);
     return {
       measureId,
       measureName: node?.name || measureId,
+      fpDisplayName: fpDisplayNameMap.get(measureId) || "",
       lineage: traceMeasureLineage(measureId, graph2)
     };
   });
@@ -1924,6 +2086,7 @@ function traceVisualLineage(visualNodeId, graph2) {
     return {
       measureId,
       measureName: node?.name || measureId,
+      fpDisplayName: fpDisplayNameMap.get(measureId) || "",
       lineage: traceMeasureLineage(measureId, graph2)
     };
   });
@@ -1963,11 +2126,39 @@ function buildMeasureChain(measureNodeId, graph2, visited) {
     name: node.name,
     table: node.metadata?.table || "",
     expression: node.metadata?.expression || "",
+    description: node.metadata?.description || "",
     children: [],
     // sub-measures
-    columns: []
+    columns: [],
     // leaf column references
+    useRelationships: []
+    // USERELATIONSHIP references
   };
+  for (const edge of graph2.edges) {
+    if (edge.type === EDGE_TYPES.MEASURE_TO_USERELATIONSHIP && edge.source === measureNodeId) {
+      const colNode = graph2.nodes.get(edge.target);
+      if (colNode) {
+        result.useRelationships.push({
+          column: colNode.name,
+          table: colNode.metadata?.table || ""
+        });
+      }
+    }
+  }
+  if (result.useRelationships.length > 0) {
+    const relTables = new Set(result.useRelationships.map((ur) => ur.table));
+    for (const edge of graph2.edges) {
+      if (edge.type === "table_relationship") {
+        const srcNode = graph2.nodes.get(edge.source);
+        const tgtNode = graph2.nodes.get(edge.target);
+        if (srcNode && tgtNode && relTables.has(srcNode.name) && relTables.has(tgtNode.name)) {
+          result.useRelationships.crossFilter = edge.metadata?.crossFilter || "single";
+          result.useRelationships.fromTable = srcNode.name;
+          result.useRelationships.toTable = tgtNode.name;
+        }
+      }
+    }
+  }
   const upNeighbors = graph2.adjacency.upstream.get(measureNodeId) || [];
   for (const upId of upNeighbors) {
     const upNode = graph2.nodes.get(upId);
@@ -1985,7 +2176,8 @@ function buildMeasureChain(measureNodeId, graph2, visited) {
         originalSourceColumn: upNode.metadata?.originalSourceColumn || "",
         wasRenamed: upNode.metadata?.wasRenamed || false,
         sourceTableFull: upNode.metadata?.sourceTableFull || "",
-        sourceTablePath: upNode.metadata?.sourceTablePath || ""
+        sourceTablePath: upNode.metadata?.sourceTablePath || "",
+        isHidden: upNode.metadata?.isHidden || false
       });
     }
   }
@@ -2001,7 +2193,6 @@ function buildSourceTable(measureChain, graph2) {
       seen.add(col.id);
       const tableNodeId = `table::${col.table}`;
       const tableNode = graph2.nodes.get(tableNodeId);
-      let pqExpression = "";
       let srcTable = col.sourceTablePath || "";
       let srcColumn = col.sourceTableFull || col.sourceColumn || col.name;
       if (tableNode) {
@@ -2009,9 +2200,10 @@ function buildSourceTable(measureChain, graph2) {
         for (const upId of tableUp) {
           const upNode = graph2.nodes.get(upId);
           if (upNode && upNode.type === "expression") {
-            pqExpression = upNode.name;
-            if (upNode.metadata?.dataSource?.sourceTable) {
-              srcTable = srcTable || `${upNode.metadata.dataSource.database || ""}.${upNode.metadata.dataSource.sourceTable}`;
+            if (upNode.metadata?.dataSource?.sourceTable && !srcTable) {
+              const exprDs = upNode.metadata.dataSource;
+              const exprFullTable = exprDs.schema ? `${exprDs.schema}.${exprDs.sourceTable}` : exprDs.sourceTable;
+              srcTable = exprDs.database ? `${exprDs.database}.${exprFullTable}` : exprFullTable;
             }
           } else if (upNode && upNode.type === "source") {
             if (!srcTable && upNode.metadata?.database) {
@@ -2020,17 +2212,23 @@ function buildSourceTable(measureChain, graph2) {
           }
         }
       }
+      if (srcTable && srcColumn && !srcColumn.includes(".")) {
+        srcColumn = `${srcTable}.${srcColumn}`;
+      }
+      const mode = tableNode?.metadata?.dataSource?.mode || "";
       rows.push({
         daxReference: `${parentMeasure || chain.name}`,
         pbiTable: col.table,
         pbiColumn: col.name,
+        dataType: col.dataType || "",
+        isHidden: col.isHidden || false,
         sourceColumn: col.sourceColumn || col.name,
         originalSourceColumn: col.originalSourceColumn || "",
-        pqExpression,
         sourceTable: srcTable,
         sourceColumnFull: srcColumn,
         renamed: col.wasRenamed,
-        renameChain: col.wasRenamed ? { sourceName: col.originalSourceColumn || "", pqName: col.sourceColumn || "", pbiName: col.name } : null
+        renameChain: col.wasRenamed ? { sourceName: col.originalSourceColumn || "", pqName: col.sourceColumn || "", pbiName: col.name } : null,
+        mode
       });
     }
     for (const child of chain.children) {
@@ -2058,7 +2256,6 @@ function buildSummaryTrees(measureNode, visuals, measureChain, sourceTable, grap
       const key = `${col.table}.${col.name}`;
       const source = colSourceMap.get(key);
       let colLine = `${prefix}    ${col.table}[${col.name}]`;
-      if (source?.pqExpression) colLine += ` -> PQ: ${source.pqExpression}`;
       if (source?.sourceTable) colLine += ` -> Source: ${source.sourceTable}.${source.sourceColumnFull}`;
       if (source?.renamed) colLine += " (renamed)";
       lines.push(colLine);
@@ -2081,9 +2278,1065 @@ var init_lineageTracer = __esm({
   }
 });
 
+// ../core/src/diff/changeTypes.js
+function createChange({ type, scope, target, description, impact = [], details = {} }) {
+  return { type, scope, target, description, impact, details };
+}
+var CHANGE_TYPES, CHANGE_SCOPES;
+var init_changeTypes = __esm({
+  "../core/src/diff/changeTypes.js"() {
+    CHANGE_TYPES = {
+      DEFAULT_PAGE_CHANGED: "default_page_changed",
+      PAGE_ADDED: "page_added",
+      PAGE_REMOVED: "page_removed",
+      FILTER_ADDED: "filter_added",
+      FILTER_REMOVED: "filter_removed",
+      FILTER_CHANGED: "filter_changed",
+      MEASURE_CHANGED: "measure_changed",
+      MEASURE_ADDED: "measure_added",
+      MEASURE_REMOVED: "measure_removed",
+      VISUAL_VISIBILITY_CHANGED: "visual_visibility_changed",
+      VISUAL_FILTER_ADDED: "visual_filter_added",
+      VISUAL_FILTER_REMOVED: "visual_filter_removed",
+      VISUAL_FILTER_CHANGED: "visual_filter_changed",
+      VISUAL_BOOKMARK_CHANGED: "visual_bookmark_changed",
+      VISUAL_ADDED: "visual_added",
+      VISUAL_REMOVED: "visual_removed",
+      VISUAL_FIELD_CHANGED: "visual_field_changed",
+      BOOKMARK_CHANGED: "bookmark_changed",
+      CALC_ITEM_CHANGED: "calc_item_changed",
+      CALC_ITEM_ADDED: "calc_item_added",
+      CALC_ITEM_REMOVED: "calc_item_removed"
+    };
+    CHANGE_SCOPES = {
+      PAGE: "page",
+      REPORT: "report",
+      VISUAL: "visual",
+      MEASURE: "measure",
+      BOOKMARK: "bookmark"
+    };
+  }
+});
+
+// ../core/src/diff/filterDiff.js
+function diffFilters(beforeFilters, afterFilters, context) {
+  const changes = [];
+  const { scope, target, locationLabel } = context;
+  const beforeMap = /* @__PURE__ */ new Map();
+  for (const f of beforeFilters) {
+    if (f.name) beforeMap.set(f.name, f);
+  }
+  const afterMap = /* @__PURE__ */ new Map();
+  for (const f of afterFilters) {
+    if (f.name) afterMap.set(f.name, f);
+  }
+  for (const [name, filter] of afterMap) {
+    if (!beforeMap.has(name)) {
+      const filterDesc = describeFilter(filter);
+      const changeType = scope === CHANGE_SCOPES.VISUAL ? CHANGE_TYPES.VISUAL_FILTER_ADDED : CHANGE_TYPES.FILTER_ADDED;
+      changes.push(createChange({
+        type: changeType,
+        scope,
+        target: { ...target, filterName: name },
+        description: `Added filter on ${filterDesc} to ${locationLabel}`,
+        details: { after: summarizeFilter(filter) }
+      }));
+    }
+  }
+  for (const [name, filter] of beforeMap) {
+    if (!afterMap.has(name)) {
+      const filterDesc = describeFilter(filter);
+      const changeType = scope === CHANGE_SCOPES.VISUAL ? CHANGE_TYPES.VISUAL_FILTER_REMOVED : CHANGE_TYPES.FILTER_REMOVED;
+      changes.push(createChange({
+        type: changeType,
+        scope,
+        target: { ...target, filterName: name },
+        description: `Removed filter on ${filterDesc} from ${locationLabel}`,
+        details: { before: summarizeFilter(filter) }
+      }));
+    }
+  }
+  for (const [name, afterFilter] of afterMap) {
+    const beforeFilter = beforeMap.get(name);
+    if (!beforeFilter) continue;
+    const beforeSummary = summarizeFilter(beforeFilter);
+    const afterSummary = summarizeFilter(afterFilter);
+    if (JSON.stringify(beforeSummary) !== JSON.stringify(afterSummary)) {
+      const filterDesc = describeFilter(afterFilter);
+      const changeType = scope === CHANGE_SCOPES.VISUAL ? CHANGE_TYPES.VISUAL_FILTER_CHANGED : CHANGE_TYPES.FILTER_CHANGED;
+      let description = `Changed filter on ${filterDesc} in ${locationLabel}`;
+      const valueDiff = describeValueChange(beforeFilter, afterFilter);
+      if (valueDiff) description += `: ${valueDiff}`;
+      changes.push(createChange({
+        type: changeType,
+        scope,
+        target: { ...target, filterName: name },
+        description,
+        details: { before: beforeSummary, after: afterSummary }
+      }));
+    }
+  }
+  return changes;
+}
+function detectReportFilterChanges(beforeFiles, afterFiles) {
+  const beforeReport = findReportJson(beforeFiles);
+  const afterReport = findReportJson(afterFiles);
+  if (!beforeReport && !afterReport) return [];
+  try {
+    const beforeConfig = beforeReport ? JSON.parse(beforeReport) : {};
+    const afterConfig = afterReport ? JSON.parse(afterReport) : {};
+    const beforeFilters = extractReportFilters(beforeConfig);
+    const afterFilters = extractReportFilters(afterConfig);
+    return diffFilters(beforeFilters, afterFilters, {
+      scope: CHANGE_SCOPES.REPORT,
+      target: {},
+      locationLabel: "filters on all pages"
+    });
+  } catch {
+    return [];
+  }
+}
+function extractReportFilters(config) {
+  if (config.filterConfig?.filters) return config.filterConfig.filters;
+  const filters = [];
+  if (config.filters && Array.isArray(config.filters)) {
+    return config.filters;
+  }
+  return filters;
+}
+function describeFilter(filter) {
+  const field = filter.field;
+  if (!field) return `"${filter.name || "unknown"}"`;
+  let entity = "";
+  let property = "";
+  if (field.Column) {
+    entity = field.Column.Expression?.SourceRef?.Entity || "";
+    property = field.Column.Property || "";
+  } else if (field.Measure) {
+    entity = field.Measure.Expression?.SourceRef?.Entity || "";
+    property = field.Measure.Property || "";
+  }
+  if (entity && property) return `${entity}[${property}]`;
+  if (entity) return entity;
+  if (property) return property;
+  return `"${filter.name || "unknown"}"`;
+}
+function summarizeFilter(filter) {
+  const summary = {
+    entity: "",
+    property: "",
+    type: filter.type || "",
+    isHiddenInViewMode: filter.isHiddenInViewMode || false
+  };
+  const field = filter.field;
+  if (field?.Column) {
+    summary.entity = field.Column.Expression?.SourceRef?.Entity || "";
+    summary.property = field.Column.Property || "";
+  } else if (field?.Measure) {
+    summary.entity = field.Measure.Expression?.SourceRef?.Entity || "";
+    summary.property = field.Measure.Property || "";
+  }
+  summary.values = extractFilterValues(filter);
+  return summary;
+}
+function extractFilterValues(filter) {
+  const values = [];
+  const where = filter.filter?.Where;
+  if (!Array.isArray(where)) return values;
+  for (const clause of where) {
+    const inExpr = clause.Condition?.In;
+    if (inExpr?.Values) {
+      for (const valArr of inExpr.Values) {
+        for (const val of valArr) {
+          if (val.Literal?.Value) {
+            values.push(val.Literal.Value.replace(/^'|'$/g, ""));
+          }
+        }
+      }
+    }
+    const notExpr = clause.Condition?.Not?.Expression?.In;
+    if (notExpr?.Values) {
+      for (const valArr of notExpr.Values) {
+        for (const val of valArr) {
+          if (val.Literal?.Value) {
+            values.push("NOT: " + val.Literal.Value.replace(/^'|'$/g, ""));
+          }
+        }
+      }
+    }
+    const comparison = clause.Condition?.Comparison || clause.Condition?.comparison;
+    if (comparison) {
+      const op = comparison.ComparisonKind ?? "";
+      const right = comparison.Right?.Literal?.Value;
+      if (right !== void 0) {
+        values.push(`${op} ${String(right).replace(/^'|'$/g, "")}`);
+      }
+    }
+  }
+  return values;
+}
+function describeValueChange(beforeFilter, afterFilter) {
+  const beforeValues = extractFilterValues(beforeFilter);
+  const afterValues = extractFilterValues(afterFilter);
+  if (beforeValues.length === 0 && afterValues.length === 0) return "";
+  const added = afterValues.filter((v) => !beforeValues.includes(v));
+  const removed = beforeValues.filter((v) => !afterValues.includes(v));
+  const parts = [];
+  if (added.length > 0) parts.push(`selected ${added.map((v) => `"${v}"`).join(", ")}`);
+  if (removed.length > 0) parts.push(`deselected ${removed.map((v) => `"${v}"`).join(", ")}`);
+  return parts.join("; ");
+}
+function findReportJson(files) {
+  for (const [path, content] of files) {
+    const lower = path.toLowerCase().replace(/\\/g, "/");
+    if (lower.endsWith("/report.json") || lower === "definition/report.json") {
+      return content;
+    }
+  }
+  return null;
+}
+var init_filterDiff = __esm({
+  "../core/src/diff/filterDiff.js"() {
+    init_changeTypes();
+  }
+});
+
+// ../core/src/diff/pageDiff.js
+function detectPageChanges(beforeFiles, afterFiles) {
+  const changes = [];
+  changes.push(...detectActivePageChange(beforeFiles, afterFiles));
+  changes.push(...detectPageAddRemove(beforeFiles, afterFiles));
+  changes.push(...detectPageFilterChanges(beforeFiles, afterFiles));
+  return changes;
+}
+function detectActivePageChange(beforeFiles, afterFiles) {
+  const changes = [];
+  const beforePages = findPagesJson(beforeFiles);
+  const afterPages = findPagesJson(afterFiles);
+  if (!beforePages || !afterPages) return changes;
+  try {
+    const beforeConfig = JSON.parse(beforePages);
+    const afterConfig = JSON.parse(afterPages);
+    if (beforeConfig.activePageName !== afterConfig.activePageName) {
+      const beforePageName = resolvePageDisplayName(beforeConfig.activePageName, beforeFiles);
+      const afterPageName = resolvePageDisplayName(afterConfig.activePageName, afterFiles);
+      changes.push(createChange({
+        type: CHANGE_TYPES.DEFAULT_PAGE_CHANGED,
+        scope: CHANGE_SCOPES.REPORT,
+        target: { pageId: afterConfig.activePageName, pageName: afterPageName },
+        description: `Default page changed from "${beforePageName}" to "${afterPageName}"`,
+        details: {
+          before: { pageId: beforeConfig.activePageName, pageName: beforePageName },
+          after: { pageId: afterConfig.activePageName, pageName: afterPageName }
+        }
+      }));
+    }
+  } catch {
+  }
+  return changes;
+}
+function detectPageAddRemove(beforeFiles, afterFiles) {
+  const changes = [];
+  const beforePageIds = extractPageIds(beforeFiles);
+  const afterPageIds = extractPageIds(afterFiles);
+  for (const pageId of afterPageIds) {
+    if (!beforePageIds.has(pageId)) {
+      const pageName = resolvePageDisplayName(pageId, afterFiles);
+      changes.push(createChange({
+        type: CHANGE_TYPES.PAGE_ADDED,
+        scope: CHANGE_SCOPES.PAGE,
+        target: { pageId, pageName },
+        description: `Page "${pageName}" was added`
+      }));
+    }
+  }
+  for (const pageId of beforePageIds) {
+    if (!afterPageIds.has(pageId)) {
+      const pageName = resolvePageDisplayName(pageId, beforeFiles);
+      changes.push(createChange({
+        type: CHANGE_TYPES.PAGE_REMOVED,
+        scope: CHANGE_SCOPES.PAGE,
+        target: { pageId, pageName },
+        description: `Page "${pageName}" was removed`
+      }));
+    }
+  }
+  return changes;
+}
+function detectPageFilterChanges(beforeFiles, afterFiles) {
+  const changes = [];
+  const beforePageFiles = findAllPageJsonFiles(beforeFiles);
+  const afterPageFiles = findAllPageJsonFiles(afterFiles);
+  const allPageIds = /* @__PURE__ */ new Set([...beforePageFiles.keys(), ...afterPageFiles.keys()]);
+  for (const pageId of allPageIds) {
+    const beforeContent = beforePageFiles.get(pageId);
+    const afterContent = afterPageFiles.get(pageId);
+    if (!beforeContent && !afterContent) continue;
+    try {
+      const beforeConfig = beforeContent ? JSON.parse(beforeContent) : {};
+      const afterConfig = afterContent ? JSON.parse(afterContent) : {};
+      const pageName = afterConfig.displayName || beforeConfig.displayName || pageId;
+      const beforeFilters = beforeConfig.filterConfig?.filters || [];
+      const afterFilters = afterConfig.filterConfig?.filters || [];
+      const filterChanges = diffFilters(beforeFilters, afterFilters, {
+        scope: CHANGE_SCOPES.PAGE,
+        target: { pageId, pageName },
+        locationLabel: `page "${pageName}"`
+      });
+      changes.push(...filterChanges);
+    } catch {
+    }
+  }
+  return changes;
+}
+function findPagesJson(files) {
+  for (const [path, content] of files) {
+    const lower = path.toLowerCase().replace(/\\/g, "/");
+    if (lower.endsWith("/pages/pages.json") || lower === "definition/pages/pages.json") {
+      return content;
+    }
+  }
+  return null;
+}
+function extractPageIds(files) {
+  const pageIds = /* @__PURE__ */ new Set();
+  for (const [path] of files) {
+    const lower = path.toLowerCase().replace(/\\/g, "/");
+    if (lower.endsWith("/page.json")) {
+      const parts = path.replace(/\\/g, "/").split("/");
+      const pagesIdx = parts.findIndex((p) => p.toLowerCase() === "pages");
+      if (pagesIdx !== -1 && pagesIdx + 1 < parts.length) {
+        pageIds.add(parts[pagesIdx + 1]);
+      }
+    }
+  }
+  return pageIds;
+}
+function findAllPageJsonFiles(files) {
+  const pageFiles = /* @__PURE__ */ new Map();
+  for (const [path, content] of files) {
+    const lower = path.toLowerCase().replace(/\\/g, "/");
+    if (lower.endsWith("/page.json")) {
+      const parts = path.replace(/\\/g, "/").split("/");
+      const pagesIdx = parts.findIndex((p) => p.toLowerCase() === "pages");
+      if (pagesIdx !== -1 && pagesIdx + 1 < parts.length) {
+        const pageId = parts[pagesIdx + 1];
+        pageFiles.set(pageId, content);
+      }
+    }
+  }
+  return pageFiles;
+}
+function resolvePageDisplayName(pageId, files) {
+  for (const [path, content] of files) {
+    const lower = path.toLowerCase().replace(/\\/g, "/");
+    if (lower.endsWith("/page.json") && path.replace(/\\/g, "/").includes(`/${pageId}/`)) {
+      try {
+        const config = JSON.parse(content);
+        return config.displayName || config.name || pageId;
+      } catch {
+      }
+    }
+  }
+  return pageId;
+}
+var init_pageDiff = __esm({
+  "../core/src/diff/pageDiff.js"() {
+    init_changeTypes();
+    init_filterDiff();
+  }
+});
+
+// ../core/src/diff/measureDiff.js
+function detectMeasureChanges(beforeFiles, afterFiles) {
+  const changes = [];
+  const beforeModel = parseModelFromFiles(beforeFiles);
+  const afterModel = parseModelFromFiles(afterFiles);
+  if (!beforeModel || !afterModel) return changes;
+  const beforeMeasures = buildMeasureMap(beforeModel.tables);
+  const afterMeasures = buildMeasureMap(afterModel.tables);
+  for (const [key, measure] of afterMeasures) {
+    if (!beforeMeasures.has(key)) {
+      changes.push(createChange({
+        type: CHANGE_TYPES.MEASURE_ADDED,
+        scope: CHANGE_SCOPES.MEASURE,
+        target: { measureName: measure.name, tableName: measure.tableName },
+        description: `Measure [${measure.name}] added to table "${measure.tableName}"`,
+        details: { after: { expression: measure.expression } }
+      }));
+    }
+  }
+  for (const [key, measure] of beforeMeasures) {
+    if (!afterMeasures.has(key)) {
+      changes.push(createChange({
+        type: CHANGE_TYPES.MEASURE_REMOVED,
+        scope: CHANGE_SCOPES.MEASURE,
+        target: { measureName: measure.name, tableName: measure.tableName },
+        description: `Measure [${measure.name}] removed from table "${measure.tableName}"`,
+        details: { before: { expression: measure.expression } }
+      }));
+    }
+  }
+  for (const [key, afterMeasure] of afterMeasures) {
+    const beforeMeasure = beforeMeasures.get(key);
+    if (!beforeMeasure) continue;
+    const beforeExpr = normalizeExpression(beforeMeasure.expression);
+    const afterExpr = normalizeExpression(afterMeasure.expression);
+    if (beforeExpr !== afterExpr) {
+      changes.push(createChange({
+        type: CHANGE_TYPES.MEASURE_CHANGED,
+        scope: CHANGE_SCOPES.MEASURE,
+        target: { measureName: afterMeasure.name, tableName: afterMeasure.tableName },
+        description: `Measure [${afterMeasure.name}] expression changed in table "${afterMeasure.tableName}"`,
+        details: {
+          before: { expression: beforeMeasure.expression },
+          after: { expression: afterMeasure.expression }
+        }
+      }));
+    }
+  }
+  changes.push(...detectCalcItemChanges(beforeModel.tables, afterModel.tables));
+  return changes;
+}
+function detectCalcItemChanges(beforeTables, afterTables) {
+  const changes = [];
+  const beforeCalcItems = buildCalcItemMap(beforeTables);
+  const afterCalcItems = buildCalcItemMap(afterTables);
+  for (const [key, item] of afterCalcItems) {
+    if (!beforeCalcItems.has(key)) {
+      changes.push(createChange({
+        type: CHANGE_TYPES.CALC_ITEM_ADDED,
+        scope: CHANGE_SCOPES.MEASURE,
+        target: { calcGroupName: item.tableName, calcItemName: item.name },
+        description: `Calculation item [${item.name}] added to calculation group "${item.tableName}"`,
+        details: { after: { expression: item.expression } }
+      }));
+    }
+  }
+  for (const [key, item] of beforeCalcItems) {
+    if (!afterCalcItems.has(key)) {
+      changes.push(createChange({
+        type: CHANGE_TYPES.CALC_ITEM_REMOVED,
+        scope: CHANGE_SCOPES.MEASURE,
+        target: { calcGroupName: item.tableName, calcItemName: item.name },
+        description: `Calculation item [${item.name}] removed from calculation group "${item.tableName}"`,
+        details: { before: { expression: item.expression } }
+      }));
+    }
+  }
+  for (const [key, afterItem] of afterCalcItems) {
+    const beforeItem = beforeCalcItems.get(key);
+    if (!beforeItem) continue;
+    if (normalizeExpression(beforeItem.expression) !== normalizeExpression(afterItem.expression)) {
+      changes.push(createChange({
+        type: CHANGE_TYPES.CALC_ITEM_CHANGED,
+        scope: CHANGE_SCOPES.MEASURE,
+        target: { calcGroupName: afterItem.tableName, calcItemName: afterItem.name },
+        description: `Calculation item [${afterItem.name}] expression changed in "${afterItem.tableName}"`,
+        details: {
+          before: { expression: beforeItem.expression },
+          after: { expression: afterItem.expression }
+        }
+      }));
+    }
+  }
+  return changes;
+}
+function parseModelFromFiles(files) {
+  const structure = identifyProjectStructure(files);
+  if (!structure.tmdlFiles || structure.tmdlFiles.length === 0) return null;
+  return parseTmdlModel(structure.tmdlFiles, structure.relationshipFiles || []);
+}
+function buildMeasureMap(tables) {
+  const map = /* @__PURE__ */ new Map();
+  for (const table of tables) {
+    for (const measure of table.measures || []) {
+      const key = `${table.name}.${measure.name}`;
+      map.set(key, {
+        name: measure.name,
+        tableName: table.name,
+        expression: measure.expression || ""
+      });
+    }
+  }
+  return map;
+}
+function buildCalcItemMap(tables) {
+  const map = /* @__PURE__ */ new Map();
+  for (const table of tables) {
+    if (!table.calculationGroup || !table.calculationItems) continue;
+    for (const item of table.calculationItems) {
+      const key = `${table.name}.${item.name}`;
+      map.set(key, {
+        name: item.name,
+        tableName: table.name,
+        expression: item.expression || ""
+      });
+    }
+  }
+  return map;
+}
+function normalizeExpression(expr) {
+  if (!expr) return "";
+  return expr.replace(/\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "").replace(/\s+/g, " ").trim();
+}
+var init_measureDiff = __esm({
+  "../core/src/diff/measureDiff.js"() {
+    init_changeTypes();
+    init_tmdlParser();
+    init_projectStructure();
+  }
+});
+
+// ../core/src/diff/visualDiff.js
+function detectVisualChanges(beforeFiles, afterFiles) {
+  const changes = [];
+  const beforeVisuals = findAllVisualFiles(beforeFiles);
+  const afterVisuals = findAllVisualFiles(afterFiles);
+  for (const [visualId, info] of afterVisuals) {
+    if (!beforeVisuals.has(visualId)) {
+      const config = parseJson(info.content);
+      const title = extractVisualTitle(config) || visualId;
+      const pageId = info.pageId;
+      const pageName = resolvePageName(pageId, afterFiles);
+      changes.push(createChange({
+        type: CHANGE_TYPES.VISUAL_ADDED,
+        scope: CHANGE_SCOPES.VISUAL,
+        target: { visualId, visualName: title, pageId, pageName },
+        description: `Visual "${title}" added to page "${pageName}"`
+      }));
+    }
+  }
+  for (const [visualId, info] of beforeVisuals) {
+    if (!afterVisuals.has(visualId)) {
+      const config = parseJson(info.content);
+      const title = extractVisualTitle(config) || visualId;
+      const pageId = info.pageId;
+      const pageName = resolvePageName(pageId, beforeFiles);
+      changes.push(createChange({
+        type: CHANGE_TYPES.VISUAL_REMOVED,
+        scope: CHANGE_SCOPES.VISUAL,
+        target: { visualId, visualName: title, pageId, pageName },
+        description: `Visual "${title}" removed from page "${pageName}"`
+      }));
+    }
+  }
+  for (const [visualId, afterInfo] of afterVisuals) {
+    const beforeInfo = beforeVisuals.get(visualId);
+    if (!beforeInfo) continue;
+    if (beforeInfo.content === afterInfo.content) continue;
+    const beforeConfig = parseJson(beforeInfo.content);
+    const afterConfig = parseJson(afterInfo.content);
+    if (!beforeConfig || !afterConfig) continue;
+    const title = extractVisualTitle(afterConfig) || extractVisualTitle(beforeConfig) || visualId;
+    const pageId = afterInfo.pageId;
+    const pageName = resolvePageName(pageId, afterFiles);
+    const target = { visualId, visualName: title, pageId, pageName };
+    changes.push(...detectVisibilityChange(beforeConfig, afterConfig, target));
+    changes.push(...detectBookmarkRefChange(beforeConfig, afterConfig, target));
+    changes.push(...detectVisualFilterChanges(beforeConfig, afterConfig, target));
+    changes.push(...detectFieldBindingChanges(beforeConfig, afterConfig, target));
+  }
+  return changes;
+}
+function detectVisibilityChange(beforeConfig, afterConfig, target) {
+  const beforeHidden = beforeConfig.isHidden === true;
+  const afterHidden = afterConfig.isHidden === true;
+  if (beforeHidden === afterHidden) return [];
+  return [createChange({
+    type: CHANGE_TYPES.VISUAL_VISIBILITY_CHANGED,
+    scope: CHANGE_SCOPES.VISUAL,
+    target,
+    description: afterHidden ? `Visual "${target.visualName}" was hidden in page "${target.pageName}"` : `Visual "${target.visualName}" was unhidden in page "${target.pageName}"`,
+    details: { before: { isHidden: beforeHidden }, after: { isHidden: afterHidden } }
+  })];
+}
+function detectBookmarkRefChange(beforeConfig, afterConfig, target) {
+  const beforeRefs = extractBookmarkRefs(beforeConfig);
+  const afterRefs = extractBookmarkRefs(afterConfig);
+  if (beforeRefs.length === 0 && afterRefs.length === 0) return [];
+  const beforeSet = new Set(beforeRefs);
+  const afterSet = new Set(afterRefs);
+  const added = afterRefs.filter((r) => !beforeSet.has(r));
+  const removed = beforeRefs.filter((r) => !afterSet.has(r));
+  if (added.length === 0 && removed.length === 0) return [];
+  return [createChange({
+    type: CHANGE_TYPES.VISUAL_BOOKMARK_CHANGED,
+    scope: CHANGE_SCOPES.VISUAL,
+    target,
+    description: `Button/bookmark reference changed in visual "${target.visualName}" on page "${target.pageName}"`,
+    details: { before: beforeRefs, after: afterRefs }
+  })];
+}
+function detectVisualFilterChanges(beforeConfig, afterConfig, target) {
+  const beforeFilters = beforeConfig.filterConfig?.filters || [];
+  const afterFilters = afterConfig.filterConfig?.filters || [];
+  if (beforeFilters.length === 0 && afterFilters.length === 0) return [];
+  return diffFilters(beforeFilters, afterFilters, {
+    scope: CHANGE_SCOPES.VISUAL,
+    target,
+    locationLabel: `visual "${target.visualName}" on page "${target.pageName}"`
+  });
+}
+function detectFieldBindingChanges(beforeConfig, afterConfig, target) {
+  const beforeFields = extractFieldsSimple(beforeConfig);
+  const afterFields = extractFieldsSimple(afterConfig);
+  const beforeSet = new Set(beforeFields.map((f) => `${f.type}|${f.table}|${f.field}`));
+  const afterSet = new Set(afterFields.map((f) => `${f.type}|${f.table}|${f.field}`));
+  const added = afterFields.filter((f) => !beforeSet.has(`${f.type}|${f.table}|${f.field}`));
+  const removed = beforeFields.filter((f) => !afterSet.has(`${f.type}|${f.table}|${f.field}`));
+  if (added.length === 0 && removed.length === 0) return [];
+  const parts = [];
+  if (added.length > 0) {
+    parts.push(`added ${added.map((f) => `${f.table}[${f.field}]`).join(", ")}`);
+  }
+  if (removed.length > 0) {
+    parts.push(`removed ${removed.map((f) => `${f.table}[${f.field}]`).join(", ")}`);
+  }
+  return [createChange({
+    type: CHANGE_TYPES.VISUAL_FIELD_CHANGED,
+    scope: CHANGE_SCOPES.VISUAL,
+    target,
+    description: `Field bindings changed in visual "${target.visualName}" on page "${target.pageName}": ${parts.join("; ")}`,
+    details: { added, removed }
+  })];
+}
+function extractFieldsSimple(config) {
+  const fields = [];
+  const seen = /* @__PURE__ */ new Set();
+  function add(type, table, field) {
+    const key = `${type}|${table}|${field}`;
+    if (!seen.has(key) && table && field) {
+      seen.add(key);
+      fields.push({ type, table, field });
+    }
+  }
+  const visual = config.visual || config;
+  const query = visual.prototypeQuery || visual.query;
+  const aliasMap = {};
+  if (query?.From) {
+    for (const from of query.From) {
+      if (from.Name && from.Entity) aliasMap[from.Name] = from.Entity;
+    }
+  }
+  if (query?.Select) {
+    for (const item of query.Select) {
+      if (item.Column) {
+        const entity = item.Column.Expression?.SourceRef?.Entity || aliasMap[item.Column.Expression?.SourceRef?.Source] || "";
+        add("column", entity, item.Column.Property || "");
+      }
+      if (item.Measure) {
+        const entity = item.Measure.Expression?.SourceRef?.Entity || aliasMap[item.Measure.Expression?.SourceRef?.Source] || "";
+        add("measure", entity, item.Measure.Property || "");
+      }
+    }
+  }
+  const queryState = visual.query?.queryState || visual.queryState;
+  if (queryState) {
+    for (const roleState of Object.values(queryState)) {
+      if (!roleState?.projections) continue;
+      for (const proj of roleState.projections) {
+        const f = proj?.field;
+        if (f?.Column) {
+          add("column", f.Column.Expression?.SourceRef?.Entity || "", f.Column.Property || "");
+        }
+        if (f?.Measure) {
+          add("measure", f.Measure.Expression?.SourceRef?.Entity || "", f.Measure.Property || "");
+        }
+      }
+    }
+  }
+  return fields;
+}
+function extractBookmarkRefs(config) {
+  const refs = [];
+  const bookmarkPattern = /Bookmark[a-f0-9]{20,}/g;
+  const json = JSON.stringify(config);
+  let match;
+  while ((match = bookmarkPattern.exec(json)) !== null) {
+    if (!refs.includes(match[0])) refs.push(match[0]);
+  }
+  return refs;
+}
+function extractVisualTitle(config) {
+  if (!config) return "";
+  const visual = config.visual || config;
+  if (visual.title) {
+    return typeof visual.title === "string" ? visual.title : visual.title.text || "";
+  }
+  if (visual.vcObjects?.title) {
+    const arr = visual.vcObjects.title;
+    if (Array.isArray(arr) && arr[0]?.properties?.text?.expr?.Literal?.Value) {
+      return arr[0].properties.text.expr.Literal.Value.replace(/^'|'$/g, "");
+    }
+  }
+  if (visual.visualContainerObjects?.title) {
+    const arr = visual.visualContainerObjects.title;
+    if (Array.isArray(arr) && arr[0]?.properties?.text?.expr?.Literal?.Value) {
+      return arr[0].properties.text.expr.Literal.Value.replace(/^'|'$/g, "");
+    }
+  }
+  return config.name || "";
+}
+function findAllVisualFiles(files) {
+  const visuals = /* @__PURE__ */ new Map();
+  for (const [path, content] of files) {
+    const lower = path.toLowerCase().replace(/\\/g, "/");
+    if (lower.includes("/visuals/") && lower.endsWith("/visual.json")) {
+      const parts = path.replace(/\\/g, "/").split("/");
+      const visualsIdx = parts.findLastIndex((p) => p.toLowerCase() === "visuals");
+      if (visualsIdx !== -1 && visualsIdx + 1 < parts.length) {
+        const visualId = parts[visualsIdx + 1];
+        const pagesIdx = parts.findIndex((p) => p.toLowerCase() === "pages");
+        const pageId = pagesIdx !== -1 && pagesIdx + 1 < parts.length ? parts[pagesIdx + 1] : "";
+        visuals.set(visualId, { content, pageId, path });
+      }
+    }
+  }
+  return visuals;
+}
+function resolvePageName(pageId, files) {
+  if (!pageId) return "unknown";
+  for (const [path, content] of files) {
+    const lower = path.toLowerCase().replace(/\\/g, "/");
+    if (lower.endsWith("/page.json") && path.replace(/\\/g, "/").includes(`/${pageId}/`)) {
+      try {
+        const config = JSON.parse(content);
+        return config.displayName || config.name || pageId;
+      } catch {
+      }
+    }
+  }
+  return pageId;
+}
+function parseJson(content) {
+  try {
+    return JSON.parse(content);
+  } catch {
+    return null;
+  }
+}
+var init_visualDiff = __esm({
+  "../core/src/diff/visualDiff.js"() {
+    init_changeTypes();
+    init_filterDiff();
+  }
+});
+
+// ../core/src/diff/bookmarkDiff.js
+function detectBookmarkChanges(beforeFiles, afterFiles) {
+  const changes = [];
+  const beforeBookmarks = findAllBookmarkFiles(beforeFiles);
+  const afterBookmarks = findAllBookmarkFiles(afterFiles);
+  for (const [id, info] of afterBookmarks) {
+    if (!beforeBookmarks.has(id)) {
+      const config = parseJson2(info.content);
+      const name = config?.displayName || id;
+      changes.push(createChange({
+        type: CHANGE_TYPES.BOOKMARK_CHANGED,
+        scope: CHANGE_SCOPES.BOOKMARK,
+        target: { bookmarkId: id, bookmarkName: name },
+        description: `Bookmark "${name}" was added`,
+        details: { after: summarizeBookmark(config) }
+      }));
+    }
+  }
+  for (const [id, info] of beforeBookmarks) {
+    if (!afterBookmarks.has(id)) {
+      const config = parseJson2(info.content);
+      const name = config?.displayName || id;
+      changes.push(createChange({
+        type: CHANGE_TYPES.BOOKMARK_CHANGED,
+        scope: CHANGE_SCOPES.BOOKMARK,
+        target: { bookmarkId: id, bookmarkName: name },
+        description: `Bookmark "${name}" was removed`,
+        details: { before: summarizeBookmark(config) }
+      }));
+    }
+  }
+  for (const [id, afterInfo] of afterBookmarks) {
+    const beforeInfo = beforeBookmarks.get(id);
+    if (!beforeInfo || beforeInfo.content === afterInfo.content) continue;
+    const beforeConfig = parseJson2(beforeInfo.content);
+    const afterConfig = parseJson2(afterInfo.content);
+    if (!beforeConfig || !afterConfig) continue;
+    const name = afterConfig.displayName || beforeConfig.displayName || id;
+    const beforeSummary = summarizeBookmark(beforeConfig);
+    const afterSummary = summarizeBookmark(afterConfig);
+    if (JSON.stringify(beforeSummary) !== JSON.stringify(afterSummary)) {
+      const descParts = [];
+      if (beforeSummary.activeSection !== afterSummary.activeSection) {
+        descParts.push(`active section changed`);
+      }
+      if (JSON.stringify(beforeSummary.targetVisuals) !== JSON.stringify(afterSummary.targetVisuals)) {
+        descParts.push(`target visuals changed`);
+      }
+      if (JSON.stringify(beforeSummary.filterOverrides) !== JSON.stringify(afterSummary.filterOverrides)) {
+        descParts.push(`filter overrides changed`);
+      }
+      const description = descParts.length > 0 ? `Bookmark "${name}" changed: ${descParts.join(", ")}` : `Bookmark "${name}" was modified`;
+      changes.push(createChange({
+        type: CHANGE_TYPES.BOOKMARK_CHANGED,
+        scope: CHANGE_SCOPES.BOOKMARK,
+        target: { bookmarkId: id, bookmarkName: name },
+        description,
+        details: { before: beforeSummary, after: afterSummary }
+      }));
+    }
+  }
+  return changes;
+}
+function summarizeBookmark(config) {
+  if (!config) return {};
+  const summary = {
+    displayName: config.displayName || "",
+    activeSection: config.explorationState?.activeSection || "",
+    targetVisuals: config.options?.targetVisualNames || [],
+    applyOnlyToTargets: config.options?.applyOnlyToTargetVisuals || false,
+    filterOverrides: []
+  };
+  const filters = config.explorationState?.filters;
+  if (filters) {
+    if (filters.byName) {
+      for (const [name, state] of Object.entries(filters.byName)) {
+        summary.filterOverrides.push({ name, type: "byName", ...state });
+      }
+    }
+    if (filters.byExpr) {
+      for (const entry of Array.isArray(filters.byExpr) ? filters.byExpr : []) {
+        summary.filterOverrides.push({ type: "byExpr", ...entry });
+      }
+    }
+  }
+  return summary;
+}
+function findAllBookmarkFiles(files) {
+  const bookmarks = /* @__PURE__ */ new Map();
+  for (const [path, content] of files) {
+    const lower = path.toLowerCase().replace(/\\/g, "/");
+    if (lower.endsWith(".bookmark.json")) {
+      const parts = path.replace(/\\/g, "/").split("/");
+      const fileName = parts[parts.length - 1];
+      const bookmarkId = fileName.replace(".bookmark.json", "");
+      bookmarks.set(bookmarkId, { content, path });
+    }
+  }
+  return bookmarks;
+}
+function parseJson2(content) {
+  try {
+    return JSON.parse(content);
+  } catch {
+    return null;
+  }
+}
+var init_bookmarkDiff = __esm({
+  "../core/src/diff/bookmarkDiff.js"() {
+    init_changeTypes();
+  }
+});
+
+// ../core/src/diff/impactResolver.js
+function resolveImpact(measureName, tableName, graph2) {
+  if (!graph2) return [];
+  const impacts = [];
+  const seen = /* @__PURE__ */ new Set();
+  const measureNodeId = `measure::${tableName}.${measureName}`;
+  const measureNode = graph2.nodes.get(measureNodeId);
+  if (!measureNode) return impacts;
+  const directVisuals = findDownstreamVisuals(measureNodeId, graph2);
+  for (const visual of directVisuals) {
+    const key = `direct:${visual.id}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      impacts.push({
+        type: "direct",
+        visualId: visual.id,
+        visualName: visual.name || visual.id,
+        pageId: visual.metadata?.pageId || "",
+        pageName: resolvePageNameFromGraph(visual.metadata?.pageId, graph2),
+        reason: `directly uses measure [${measureName}]`
+      });
+    }
+  }
+  const fpImpacts = resolveFieldParameterImpact(measureName, tableName, graph2);
+  for (const impact of fpImpacts) {
+    const key = `fp:${impact.visualId}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      impacts.push(impact);
+    }
+  }
+  const cgImpacts = resolveCalcGroupImpact(measureNodeId, graph2);
+  for (const impact of cgImpacts) {
+    const key = `cg:${impact.visualId}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      impacts.push(impact);
+    }
+  }
+  return impacts;
+}
+function findDownstreamVisuals(nodeId, graph2) {
+  const visuals = [];
+  const visited = /* @__PURE__ */ new Set();
+  const queue = [nodeId];
+  while (queue.length > 0) {
+    const current = queue.shift();
+    const downstream = graph2.adjacency.downstream.get(current) || [];
+    for (const neighbor of downstream) {
+      if (visited.has(neighbor)) continue;
+      visited.add(neighbor);
+      const node = graph2.nodes.get(neighbor);
+      if (node?.type === NODE_TYPES.VISUAL) {
+        visuals.push(node);
+      } else {
+        queue.push(neighbor);
+      }
+    }
+  }
+  return visuals;
+}
+function resolveFieldParameterImpact(measureName, tableName, graph2) {
+  const impacts = [];
+  for (const node of graph2.nodes.values()) {
+    if (node.metadata?.enrichmentType !== ENRICHMENT_TYPES.FIELD_PARAMETER) continue;
+    const fpFields = node.metadata?.fieldParameter?.fields || [];
+    const fpTableName = node.metadata?.table || node.name;
+    const isReferenced = fpFields.some((field) => {
+      if (field.reference) {
+        const ref = field.reference;
+        if (ref.includes(`'${tableName}'[${measureName}]`)) return true;
+        if (ref === `[${measureName}]`) return true;
+      }
+      return field.name === measureName;
+    });
+    if (!isReferenced) continue;
+    const fpTableNodeId = `table::${fpTableName}`;
+    const fpVisuals = findDownstreamVisuals(fpTableNodeId, graph2);
+    for (const visual of fpVisuals) {
+      impacts.push({
+        type: "field_parameter",
+        visualId: visual.id,
+        visualName: visual.name || visual.id,
+        pageId: visual.metadata?.pageId || "",
+        pageName: resolvePageNameFromGraph(visual.metadata?.pageId, graph2),
+        reason: `uses field parameter "${fpTableName}" which references [${measureName}]`
+      });
+    }
+  }
+  return impacts;
+}
+function resolveCalcGroupImpact(measureNodeId, graph2) {
+  const impacts = [];
+  const directVisuals = findDownstreamVisuals(measureNodeId, graph2);
+  for (const visual of directVisuals) {
+    const upstream = graph2.adjacency.upstream.get(visual.id) || [];
+    for (const upId of upstream) {
+      const upNode = graph2.nodes.get(upId);
+      if (upNode?.metadata?.enrichmentType === ENRICHMENT_TYPES.CALCULATION_GROUP) {
+        impacts.push({
+          type: "calculation_group",
+          visualId: visual.id,
+          visualName: visual.name || visual.id,
+          pageId: visual.metadata?.pageId || "",
+          pageName: resolvePageNameFromGraph(visual.metadata?.pageId, graph2),
+          reason: `applies calculation group "${upNode.name || upNode.id}" to this measure`
+        });
+      }
+    }
+  }
+  return impacts;
+}
+function resolvePageNameFromGraph(pageId, graph2) {
+  if (!pageId) return "unknown";
+  const pageNodeId = `page::${pageId}`;
+  const pageNode = graph2.nodes.get(pageNodeId);
+  return pageNode?.name || pageId;
+}
+var init_impactResolver = __esm({
+  "../core/src/diff/impactResolver.js"() {
+    init_constants();
+  }
+});
+
+// ../core/src/diff/changeDetector.js
+function detectChanges(beforeFiles, afterFiles, graph2 = null) {
+  const allChanges = [];
+  const beforeReport = filterReportFiles(beforeFiles);
+  const afterReport = filterReportFiles(afterFiles);
+  const beforeModel = filterModelFiles(beforeFiles);
+  const afterModel = filterModelFiles(afterFiles);
+  allChanges.push(...detectPageChanges(beforeReport, afterReport));
+  allChanges.push(...detectReportFilterChanges(beforeReport, afterReport));
+  allChanges.push(...detectVisualChanges(beforeReport, afterReport));
+  allChanges.push(...detectBookmarkChanges(beforeReport, afterReport));
+  allChanges.push(...detectMeasureChanges(beforeModel, afterModel));
+  if (graph2) {
+    for (const change of allChanges) {
+      if (change.type === CHANGE_TYPES.MEASURE_CHANGED || change.type === CHANGE_TYPES.MEASURE_ADDED || change.type === CHANGE_TYPES.MEASURE_REMOVED) {
+        const { measureName, tableName } = change.target;
+        if (measureName && tableName) {
+          change.impact = resolveImpact(measureName, tableName, graph2);
+        }
+      }
+    }
+  }
+  const summary = buildSummary(allChanges);
+  return { changes: allChanges, summary };
+}
+function buildSummary(changes) {
+  const byType = {};
+  const byScope = {};
+  for (const change of changes) {
+    byType[change.type] = (byType[change.type] || 0) + 1;
+    byScope[change.scope] = (byScope[change.scope] || 0) + 1;
+  }
+  return {
+    totalChanges: changes.length,
+    byType,
+    byScope
+  };
+}
+function filterReportFiles(files) {
+  const filtered = /* @__PURE__ */ new Map();
+  for (const [path, content] of files) {
+    const lower = path.toLowerCase().replace(/\\/g, "/");
+    if (lower.includes(".report/") || lower.includes("/definition/pages/") || lower.includes("/definition/bookmarks/") || lower.endsWith("/report.json") || lower.endsWith("/pages.json") || lower.endsWith("/page.json") || lower.endsWith("/visual.json") || lower.endsWith(".bookmark.json") || lower.endsWith(".pbir")) {
+      filtered.set(path, content);
+    }
+  }
+  if (filtered.size === 0) return files;
+  return filtered;
+}
+function filterModelFiles(files) {
+  const filtered = /* @__PURE__ */ new Map();
+  for (const [path, content] of files) {
+    const lower = path.toLowerCase().replace(/\\/g, "/");
+    if (lower.includes(".semanticmodel/") || lower.endsWith(".tmdl")) {
+      filtered.set(path, content);
+    }
+  }
+  if (filtered.size === 0) return files;
+  return filtered;
+}
+var init_changeDetector = __esm({
+  "../core/src/diff/changeDetector.js"() {
+    init_pageDiff();
+    init_filterDiff();
+    init_measureDiff();
+    init_visualDiff();
+    init_bookmarkDiff();
+    init_impactResolver();
+    init_changeTypes();
+  }
+});
+
 // ../core/src/index.js
 var src_exports = {};
 __export(src_exports, {
+  CHANGE_SCOPES: () => CHANGE_SCOPES,
+  CHANGE_TYPES: () => CHANGE_TYPES,
   EDGE_TYPES: () => EDGE_TYPES,
   ENRICHMENT_TYPES: () => ENRICHMENT_TYPES,
   LAYER_COLORS: () => LAYER_COLORS,
@@ -2098,6 +3351,7 @@ __export(src_exports, {
   computeStats: () => computeStats,
   createEdge: () => createEdge,
   createNode: () => createNode,
+  detectChanges: () => detectChanges,
   detectEnrichments: () => detectEnrichments,
   exportImpactReport: () => exportImpactReport,
   extractColumnRefs: () => extractColumnRefs,
@@ -2115,6 +3369,7 @@ __export(src_exports, {
   parsePbirReport: () => parsePbirReport,
   parseSemanticModelReference: () => parseSemanticModelReference,
   parseTmdlModel: () => parseTmdlModel,
+  resolveImpact: () => resolveImpact,
   traceMeasureLineage: () => traceMeasureLineage,
   traceVisualLineage: () => traceVisualLineage
 });
@@ -2162,6 +3417,9 @@ var init_src = __esm({
     init_lineageTracer();
     init_impactAnalysis();
     init_constants();
+    init_changeDetector();
+    init_changeTypes();
+    init_impactResolver();
   }
 });
 
@@ -2538,6 +3796,213 @@ var require_codelensProvider = __commonJS({
   }
 });
 
+// src/providers/changeTreeProvider.js
+var require_changeTreeProvider = __commonJS({
+  "src/providers/changeTreeProvider.js"(exports2, module2) {
+    var vscode2 = require("vscode");
+    var ChangeTreeProvider2 = class {
+      constructor() {
+        this._onDidChangeTreeData = new vscode2.EventEmitter();
+        this.onDidChangeTreeData = this._onDidChangeTreeData.event;
+        this._scanResults = [];
+        this._flatChanges = [];
+      }
+      /**
+       * Update the tree with new scan results.
+       * @param {Array} scanResults - From commitScanner.scanRecentChanges()
+       */
+      setResults(scanResults) {
+        this._scanResults = scanResults || [];
+        this._flatChanges = [];
+        for (const result of this._scanResults) {
+          for (const change of result.changes) {
+            this._flatChanges.push({
+              ...change,
+              commitHash: result.toCommit.hash.substring(0, 7),
+              commitMessage: result.toCommit.message,
+              commitDate: result.toCommit.date
+            });
+          }
+        }
+        this._onDidChangeTreeData.fire();
+      }
+      /**
+       * Get the change count for a specific page (for badge display).
+       * @param {string} pageName
+       * @returns {number}
+       */
+      getPageChangeCount(pageName) {
+        return this._flatChanges.filter(
+          (c) => (c.target?.pageName || c.target?.pageId) === pageName
+        ).length;
+      }
+      /**
+       * Get the change count for a specific measure.
+       * @param {string} measureName
+       * @returns {number}
+       */
+      getMeasureChangeCount(measureName) {
+        return this._flatChanges.filter((c) => c.target?.measureName === measureName).length;
+      }
+      /**
+       * Get total number of changes.
+       * @returns {number}
+       */
+      getTotalChangeCount() {
+        return this._flatChanges.length;
+      }
+      getTreeItem(element) {
+        return element;
+      }
+      getChildren(element) {
+        if (!element) {
+          if (this._scanResults.length === 0) {
+            return [this._createInfoItem("No changes detected in recent commits")];
+          }
+          return this._scanResults.map((result, index) => {
+            const hash = result.toCommit.hash.substring(0, 7);
+            const msg = result.toCommit.message || "No message";
+            const count = result.changes.length;
+            const item = new vscode2.TreeItem(
+              `${hash} \u2014 ${msg}`,
+              vscode2.TreeItemCollapsibleState.Expanded
+            );
+            item.description = `${count} change${count !== 1 ? "s" : ""}`;
+            item.iconPath = new vscode2.ThemeIcon("git-commit");
+            item.contextValue = "commit";
+            item._resultIndex = index;
+            return item;
+          });
+        }
+        if (element._resultIndex !== void 0) {
+          const result = this._scanResults[element._resultIndex];
+          if (!result) return [];
+          const groups = /* @__PURE__ */ new Map();
+          for (const change of result.changes) {
+            const scope = change.scope || "other";
+            if (!groups.has(scope)) groups.set(scope, []);
+            groups.get(scope).push(change);
+          }
+          const scopeIcons = {
+            report: "file",
+            page: "file-text",
+            visual: "symbol-misc",
+            measure: "symbol-method",
+            bookmark: "bookmark"
+          };
+          const scopeLabels = {
+            report: "Report",
+            page: "Page",
+            visual: "Visual",
+            measure: "Measure",
+            bookmark: "Bookmark"
+          };
+          return [...groups.entries()].map(([scope, changes]) => {
+            const item = new vscode2.TreeItem(
+              scopeLabels[scope] || scope,
+              vscode2.TreeItemCollapsibleState.Expanded
+            );
+            item.description = `${changes.length}`;
+            item.iconPath = new vscode2.ThemeIcon(scopeIcons[scope] || "circle-outline");
+            item._resultIndex = element._resultIndex;
+            item._scope = scope;
+            return item;
+          });
+        }
+        if (element._scope !== void 0 && element._resultIndex !== void 0) {
+          const result = this._scanResults[element._resultIndex];
+          if (!result) return [];
+          const changes = result.changes.filter((c) => c.scope === element._scope);
+          return changes.map((change) => this._createChangeItem(change));
+        }
+        if (element._change?.impact?.length > 0) {
+          return element._change.impact.map((impact) => {
+            const item = new vscode2.TreeItem(
+              `${impact.visualName} (${impact.pageName})`,
+              vscode2.TreeItemCollapsibleState.None
+            );
+            item.description = impact.reason;
+            item.iconPath = new vscode2.ThemeIcon(
+              impact.type === "field_parameter" ? "references" : impact.type === "calculation_group" ? "symbol-operator" : "arrow-right"
+            );
+            return item;
+          });
+        }
+        return [];
+      }
+      _createChangeItem(change) {
+        const hasImpact = change.impact && change.impact.length > 0;
+        const item = new vscode2.TreeItem(
+          change.description,
+          hasImpact ? vscode2.TreeItemCollapsibleState.Collapsed : vscode2.TreeItemCollapsibleState.None
+        );
+        item.iconPath = new vscode2.ThemeIcon(this._getChangeIcon(change.type));
+        item.tooltip = this._buildTooltip(change);
+        item.contextValue = "change";
+        item._change = change;
+        if (hasImpact) {
+          item.description = `${change.impact.length} visual${change.impact.length !== 1 ? "s" : ""} impacted`;
+        }
+        return item;
+      }
+      _getChangeIcon(type) {
+        const icons = {
+          default_page_changed: "home",
+          page_added: "add",
+          page_removed: "trash",
+          filter_added: "filter",
+          filter_removed: "close",
+          filter_changed: "filter",
+          measure_changed: "edit",
+          measure_added: "add",
+          measure_removed: "trash",
+          visual_visibility_changed: "eye",
+          visual_filter_added: "filter",
+          visual_filter_removed: "close",
+          visual_filter_changed: "filter",
+          visual_bookmark_changed: "bookmark",
+          visual_added: "add",
+          visual_removed: "trash",
+          visual_field_changed: "symbol-field",
+          bookmark_changed: "bookmark",
+          calc_item_changed: "symbol-operator",
+          calc_item_added: "add",
+          calc_item_removed: "trash"
+        };
+        return icons[type] || "circle-outline";
+      }
+      _buildTooltip(change) {
+        const parts = [change.description];
+        if (change.impact && change.impact.length > 0) {
+          parts.push("");
+          parts.push(`Impacted visuals (${change.impact.length}):`);
+          for (const impact of change.impact) {
+            parts.push(`  - ${impact.visualName} on ${impact.pageName}`);
+            parts.push(`    ${impact.reason}`);
+          }
+        }
+        if (change.details?.before !== void 0 && change.details?.after !== void 0) {
+          parts.push("");
+          if (typeof change.details.before === "object") {
+            parts.push(`Before: ${JSON.stringify(change.details.before, null, 2).substring(0, 200)}`);
+            parts.push(`After: ${JSON.stringify(change.details.after, null, 2).substring(0, 200)}`);
+          } else {
+            parts.push(`Before: ${String(change.details.before).substring(0, 200)}`);
+            parts.push(`After: ${String(change.details.after).substring(0, 200)}`);
+          }
+        }
+        return new vscode2.MarkdownString(parts.join("\n"));
+      }
+      _createInfoItem(message) {
+        const item = new vscode2.TreeItem(message, vscode2.TreeItemCollapsibleState.None);
+        item.iconPath = new vscode2.ThemeIcon("info");
+        return item;
+      }
+    };
+    module2.exports = { ChangeTreeProvider: ChangeTreeProvider2 };
+  }
+});
+
 // src/webview/lineagePanel.js
 var require_lineagePanel = __commonJS({
   "src/webview/lineagePanel.js"(exports2, module2) {
@@ -2753,6 +4218,182 @@ ${sections.join("\n")}
   }
 });
 
+// src/git/gitHistory.js
+var require_gitHistory = __commonJS({
+  "src/git/gitHistory.js"(exports2, module2) {
+    var { execFile } = require("child_process");
+    function runGit(cwd, args) {
+      return new Promise((resolve, reject) => {
+        execFile("git", args, { cwd, maxBuffer: 10 * 1024 * 1024 }, (err, stdout, stderr) => {
+          if (err) {
+            reject(new Error(`git ${args[0]} failed: ${stderr || err.message}`));
+          } else {
+            resolve(stdout);
+          }
+        });
+      });
+    }
+    async function getRecentCommits(cwd, limit = 10, paths = []) {
+      const args = ["log", `--max-count=${limit}`, "--format=%H|%s|%ai"];
+      if (paths.length > 0) {
+        args.push("--");
+        args.push(...paths);
+      }
+      const output = await runGit(cwd, args);
+      return output.trim().split("\n").filter(Boolean).map((line) => {
+        const [hash, message, date] = line.split("|");
+        return { hash, message, date };
+      });
+    }
+    async function getChangedFiles(cwd, fromHash, toHash) {
+      const output = await runGit(cwd, ["diff", "--name-only", fromHash, toHash]);
+      return output.trim().split("\n").filter(Boolean);
+    }
+    async function getFileAtCommit(cwd, hash, filePath) {
+      try {
+        return await runGit(cwd, ["show", `${hash}:${filePath}`]);
+      } catch {
+        return null;
+      }
+    }
+    async function buildFileMap(cwd, hash, filePaths) {
+      const map = /* @__PURE__ */ new Map();
+      const relevantExts = [".json", ".tmdl", ".pbir"];
+      const relevantFiles = filePaths.filter((p) => {
+        const lower = p.toLowerCase();
+        if (lower.includes(".pbi/")) return false;
+        if (lower.includes("cache.abf")) return false;
+        return relevantExts.some((ext) => lower.endsWith(ext));
+      });
+      for (let i = 0; i < relevantFiles.length; i += 20) {
+        const batch = relevantFiles.slice(i, i + 20);
+        const results = await Promise.all(
+          batch.map(async (filePath) => {
+            const content = await getFileAtCommit(cwd, hash, filePath);
+            return { filePath, content };
+          })
+        );
+        for (const { filePath, content } of results) {
+          if (content !== null) {
+            map.set(filePath, content);
+          }
+        }
+      }
+      return map;
+    }
+    async function isGitRepo(cwd) {
+      try {
+        await runGit(cwd, ["rev-parse", "--is-inside-work-tree"]);
+        return true;
+      } catch {
+        return false;
+      }
+    }
+    async function getRepoRoot(cwd) {
+      const output = await runGit(cwd, ["rev-parse", "--show-toplevel"]);
+      return output.trim();
+    }
+    module2.exports = {
+      getRecentCommits,
+      getChangedFiles,
+      getFileAtCommit,
+      buildFileMap,
+      isGitRepo,
+      getRepoRoot
+    };
+  }
+});
+
+// src/git/commitScanner.js
+var require_commitScanner = __commonJS({
+  "src/git/commitScanner.js"(exports2, module2) {
+    var { getRecentCommits, getChangedFiles, buildFileMap, isGitRepo, getRepoRoot } = require_gitHistory();
+    var { detectChanges: detectChanges2 } = (init_src(), __toCommonJS(src_exports));
+    async function scanRecentChanges2(workspacePath, graph2 = null, maxCommits = 10) {
+      if (!await isGitRepo(workspacePath)) {
+        return [];
+      }
+      const repoRoot = await getRepoRoot(workspacePath);
+      const results = [];
+      const commits = await getRecentCommits(repoRoot, maxCommits + 1, [
+        "*.tmdl",
+        "*.json",
+        "*.pbir"
+      ]);
+      if (commits.length < 2) return results;
+      for (let i = 0; i < commits.length - 1; i++) {
+        const toCommit = commits[i];
+        const fromCommit = commits[i + 1];
+        try {
+          const changedFiles = await getChangedFiles(repoRoot, fromCommit.hash, toCommit.hash);
+          const relevantChanged = changedFiles.filter((p) => {
+            const lower = p.toLowerCase();
+            if (lower.includes(".pbi/")) return false;
+            if (lower.includes("cache.abf")) return false;
+            return lower.endsWith(".json") || lower.endsWith(".tmdl") || lower.endsWith(".pbir");
+          });
+          if (relevantChanged.length === 0) continue;
+          const [beforeFiles, afterFiles] = await Promise.all([
+            buildFileMap(repoRoot, fromCommit.hash, relevantChanged),
+            buildFileMap(repoRoot, toCommit.hash, relevantChanged)
+          ]);
+          const { changes, summary } = detectChanges2(beforeFiles, afterFiles, graph2);
+          if (changes.length > 0) {
+            results.push({
+              fromCommit,
+              toCommit,
+              changes,
+              summary
+            });
+          }
+        } catch (err) {
+          console.warn(`Failed to scan commits ${fromCommit.hash}..${toCommit.hash}:`, err.message);
+        }
+      }
+      return results;
+    }
+    async function getAllRecentChanges(workspacePath, graph2 = null, maxCommits = 10) {
+      const scanResults = await scanRecentChanges2(workspacePath, graph2, maxCommits);
+      const allChanges = [];
+      for (const result of scanResults) {
+        for (const change of result.changes) {
+          allChanges.push({
+            ...change,
+            commitHash: result.toCommit.hash.substring(0, 7),
+            commitMessage: result.toCommit.message,
+            commitDate: result.toCommit.date
+          });
+        }
+      }
+      return allChanges;
+    }
+    function groupChangesByPage(changes) {
+      const grouped = /* @__PURE__ */ new Map();
+      for (const change of changes) {
+        const pageName = change.target?.pageName || change.target?.pageId || "_report";
+        if (!grouped.has(pageName)) grouped.set(pageName, []);
+        grouped.get(pageName).push(change);
+      }
+      return grouped;
+    }
+    function groupChangesByScope(changes) {
+      const grouped = /* @__PURE__ */ new Map();
+      for (const change of changes) {
+        const scope = change.scope || "other";
+        if (!grouped.has(scope)) grouped.set(scope, []);
+        grouped.get(scope).push(change);
+      }
+      return grouped;
+    }
+    module2.exports = {
+      scanRecentChanges: scanRecentChanges2,
+      getAllRecentChanges,
+      groupChangesByPage,
+      groupChangesByScope
+    };
+  }
+});
+
 // src/extension.js
 var vscode = require("vscode");
 var { analyze: analyze2, computeStats: computeStats2, traceMeasureLineage: traceMeasureLineage2, findOrphans: findOrphans2 } = (init_src(), __toCommonJS(src_exports));
@@ -2761,7 +4402,9 @@ var { MeasureTreeProvider } = require_measureTreeProvider();
 var { OrphanTreeProvider } = require_orphanTreeProvider();
 var { StatsTreeProvider } = require_statsTreeProvider();
 var { TmdlCodeLensProvider } = require_codelensProvider();
+var { ChangeTreeProvider } = require_changeTreeProvider();
 var { showLineagePanel } = require_lineagePanel();
+var { scanRecentChanges } = require_commitScanner();
 var graph = null;
 var enrichments = null;
 var orphanIds = /* @__PURE__ */ new Set();
@@ -2770,11 +4413,13 @@ var measureTree = new MeasureTreeProvider();
 var orphanTree = new OrphanTreeProvider();
 var statsTree = new StatsTreeProvider();
 var codeLensProvider = new TmdlCodeLensProvider();
+var changeTree = new ChangeTreeProvider();
 function activate(context) {
   console.log("PBIP Lineage Explorer activated");
   vscode.window.registerTreeDataProvider("pbipLineage.measures", measureTree);
   vscode.window.registerTreeDataProvider("pbipLineage.orphans", orphanTree);
   vscode.window.registerTreeDataProvider("pbipLineage.stats", statsTree);
+  vscode.window.registerTreeDataProvider("pbipLineage.changes", changeTree);
   context.subscriptions.push(
     vscode.languages.registerCodeLensProvider(
       { pattern: "**/*.tmdl" },
@@ -2788,13 +4433,17 @@ function activate(context) {
     vscode.commands.registerCommand("pbipLineage.traceMeasure", handleTraceMeasure),
     vscode.commands.registerCommand("pbipLineage.findOrphans", handleFindOrphans),
     vscode.commands.registerCommand("pbipLineage.showModelHealth", handleShowModelHealth),
-    vscode.commands.registerCommand("pbipLineage.refresh", handleRefresh)
+    vscode.commands.registerCommand("pbipLineage.refresh", handleRefresh),
+    vscode.commands.registerCommand("pbipLineage.scanChanges", handleScanChanges)
   );
   const watcher = vscode.workspace.createFileSystemWatcher("**/*.tmdl");
   watcher.onDidChange(() => loadProject());
   watcher.onDidCreate(() => loadProject());
   watcher.onDidDelete(() => loadProject());
   context.subscriptions.push(watcher);
+  const gitWatcher = vscode.workspace.createFileSystemWatcher("**/.git/HEAD");
+  gitWatcher.onDidChange(() => scanChangesQuiet());
+  context.subscriptions.push(gitWatcher);
   loadProject();
 }
 async function loadProject() {
@@ -2822,6 +4471,7 @@ async function loadProject() {
     }
     statusBarItem.tooltip = `PBIP: ${stats.tables} tables, ${stats.measures} measures, ${stats.visuals} visuals`;
     statusBarItem.show();
+    scanChangesQuiet();
   } catch (err) {
     console.error("PBIP Lineage Explorer: Failed to load project", err);
     statusBarItem.text = "$(graph-line) PBIP: Error";
@@ -2888,6 +4538,39 @@ function handleShowModelHealth() {
 async function handleRefresh() {
   await loadProject();
   vscode.window.showInformationMessage("PBIP Lineage refreshed.");
+}
+async function handleScanChanges() {
+  const workspaceFolders = vscode.workspace.workspaceFolders;
+  if (!workspaceFolders || workspaceFolders.length === 0) {
+    vscode.window.showWarningMessage("No workspace folder open.");
+    return;
+  }
+  const folder = workspaceFolders[0].uri.fsPath;
+  try {
+    const results = await scanRecentChanges(folder, graph, 10);
+    changeTree.setResults(results);
+    const totalChanges = changeTree.getTotalChangeCount();
+    if (totalChanges > 0) {
+      vscode.window.showInformationMessage(
+        `Found ${totalChanges} change${totalChanges !== 1 ? "s" : ""} in recent commits.`
+      );
+      vscode.commands.executeCommand("pbipLineage.changes.focus");
+    } else {
+      vscode.window.showInformationMessage("No changes detected in recent commits.");
+    }
+  } catch (err) {
+    vscode.window.showErrorMessage(`Change scan failed: ${err.message}`);
+  }
+}
+async function scanChangesQuiet() {
+  const workspaceFolders = vscode.workspace.workspaceFolders;
+  if (!workspaceFolders || workspaceFolders.length === 0) return;
+  try {
+    const folder = workspaceFolders[0].uri.fsPath;
+    const results = await scanRecentChanges(folder, graph, 10);
+    changeTree.setResults(results);
+  } catch {
+  }
 }
 function deactivate() {
   if (statusBarItem) statusBarItem.dispose();

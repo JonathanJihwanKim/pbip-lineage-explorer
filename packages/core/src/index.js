@@ -21,6 +21,11 @@ import { analyzeImpact, findOrphans, exportImpactReport } from './graph/impactAn
 // Constants
 import { NODE_TYPES, EDGE_TYPES, LAYER_COLORS, ENRICHMENT_TYPES } from './utils/constants.js';
 
+// Change Detection
+import { detectChanges } from './diff/changeDetector.js';
+import { CHANGE_TYPES, CHANGE_SCOPES } from './diff/changeTypes.js';
+import { resolveImpact } from './diff/impactResolver.js';
+
 // Re-export everything
 export {
   // Parsers
@@ -35,6 +40,8 @@ export {
   analyzeImpact, findOrphans, exportImpactReport,
   // Constants
   NODE_TYPES, EDGE_TYPES, LAYER_COLORS, ENRICHMENT_TYPES,
+  // Change Detection
+  detectChanges, CHANGE_TYPES, CHANGE_SCOPES, resolveImpact,
 };
 
 /**

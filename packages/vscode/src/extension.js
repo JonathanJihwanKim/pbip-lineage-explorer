@@ -10,7 +10,9 @@ const { MeasureTreeProvider } = require('./providers/measureTreeProvider');
 const { OrphanTreeProvider } = require('./providers/orphanTreeProvider');
 const { StatsTreeProvider } = require('./providers/statsTreeProvider');
 const { TmdlCodeLensProvider } = require('./providers/codelensProvider');
+const { ChangeTreeProvider } = require('./providers/changeTreeProvider');
 const { showLineagePanel } = require('./webview/lineagePanel');
+const { scanRecentChanges } = require('./git/commitScanner');
 
 let graph = null;
 let enrichments = null;
@@ -22,6 +24,7 @@ const measureTree = new MeasureTreeProvider();
 const orphanTree = new OrphanTreeProvider();
 const statsTree = new StatsTreeProvider();
 const codeLensProvider = new TmdlCodeLensProvider();
+const changeTree = new ChangeTreeProvider();
 
 function activate(context) {
   console.log('PBIP Lineage Explorer activated');
@@ -30,6 +33,7 @@ function activate(context) {
   vscode.window.registerTreeDataProvider('pbipLineage.measures', measureTree);
   vscode.window.registerTreeDataProvider('pbipLineage.orphans', orphanTree);
   vscode.window.registerTreeDataProvider('pbipLineage.stats', statsTree);
+  vscode.window.registerTreeDataProvider('pbipLineage.changes', changeTree);
 
   // Register CodeLens
   context.subscriptions.push(
@@ -50,6 +54,7 @@ function activate(context) {
     vscode.commands.registerCommand('pbipLineage.findOrphans', handleFindOrphans),
     vscode.commands.registerCommand('pbipLineage.showModelHealth', handleShowModelHealth),
     vscode.commands.registerCommand('pbipLineage.refresh', handleRefresh),
+    vscode.commands.registerCommand('pbipLineage.scanChanges', handleScanChanges),
   );
 
   // Watch for .tmdl file changes
@@ -58,6 +63,11 @@ function activate(context) {
   watcher.onDidCreate(() => loadProject());
   watcher.onDidDelete(() => loadProject());
   context.subscriptions.push(watcher);
+
+  // Watch for git HEAD changes (e.g. after commit, checkout)
+  const gitWatcher = vscode.workspace.createFileSystemWatcher('**/.git/HEAD');
+  gitWatcher.onDidChange(() => scanChangesQuiet());
+  context.subscriptions.push(gitWatcher);
 
   // Initial load
   loadProject();
@@ -97,6 +107,9 @@ async function loadProject() {
     }
     statusBarItem.tooltip = `PBIP: ${stats.tables} tables, ${stats.measures} measures, ${stats.visuals} visuals`;
     statusBarItem.show();
+
+    // Trigger background change scan after project loads
+    scanChangesQuiet();
   } catch (err) {
     console.error('PBIP Lineage Explorer: Failed to load project', err);
     statusBarItem.text = '$(graph-line) PBIP: Error';
@@ -173,6 +186,46 @@ function handleShowModelHealth() {
 async function handleRefresh() {
   await loadProject();
   vscode.window.showInformationMessage('PBIP Lineage refreshed.');
+}
+
+async function handleScanChanges() {
+  const workspaceFolders = vscode.workspace.workspaceFolders;
+  if (!workspaceFolders || workspaceFolders.length === 0) {
+    vscode.window.showWarningMessage('No workspace folder open.');
+    return;
+  }
+
+  const folder = workspaceFolders[0].uri.fsPath;
+
+  try {
+    const results = await scanRecentChanges(folder, graph, 10);
+    changeTree.setResults(results);
+
+    const totalChanges = changeTree.getTotalChangeCount();
+    if (totalChanges > 0) {
+      vscode.window.showInformationMessage(
+        `Found ${totalChanges} change${totalChanges !== 1 ? 's' : ''} in recent commits.`
+      );
+      vscode.commands.executeCommand('pbipLineage.changes.focus');
+    } else {
+      vscode.window.showInformationMessage('No changes detected in recent commits.');
+    }
+  } catch (err) {
+    vscode.window.showErrorMessage(`Change scan failed: ${err.message}`);
+  }
+}
+
+async function scanChangesQuiet() {
+  const workspaceFolders = vscode.workspace.workspaceFolders;
+  if (!workspaceFolders || workspaceFolders.length === 0) return;
+
+  try {
+    const folder = workspaceFolders[0].uri.fsPath;
+    const results = await scanRecentChanges(folder, graph, 10);
+    changeTree.setResults(results);
+  } catch {
+    // Silently fail on background scans
+  }
 }
 
 function deactivate() {

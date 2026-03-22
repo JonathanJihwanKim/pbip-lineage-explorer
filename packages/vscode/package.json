@@ -51,6 +51,11 @@
         "command": "pbipLineage.refresh",
         "title": "PBIP: Refresh Lineage",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "pbipLineage.scanChanges",
+        "title": "PBIP: Scan Recent Changes",
+        "icon": "$(git-compare)"
       }
     ],
     "viewsContainers": {
@@ -78,6 +83,11 @@
           "id": "pbipLineage.stats",
           "name": "Model Stats",
           "icon": "$(pulse)"
+        },
+        {
+          "id": "pbipLineage.changes",
+          "name": "Change History",
+          "icon": "$(git-compare)"
         }
       ]
     },
@@ -85,6 +95,10 @@
       {
         "view": "pbipLineage.measures",
         "contents": "No PBIP project found in this workspace.\n\nOpen a folder containing .tmdl files to get started.\n\n[Open Folder](command:vscode.openFolder)"
+      },
+      {
+        "view": "pbipLineage.changes",
+        "contents": "No changes detected yet.\n\nChanges are auto-scanned from git history when a PBIP project loads.\n\n[Scan Now](command:pbipLineage.scanChanges)"
       }
     ],
     "menus": {
@@ -92,6 +106,11 @@
         {
           "command": "pbipLineage.refresh",
           "when": "view == pbipLineage.measures",
+          "group": "navigation"
+        },
+        {
+          "command": "pbipLineage.scanChanges",
+          "when": "view == pbipLineage.changes",
           "group": "navigation"
         }
       ]
