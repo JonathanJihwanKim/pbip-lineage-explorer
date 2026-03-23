@@ -45,6 +45,9 @@ export async function scanGitHistory(rootHandle, graph = null, maxCommits = 10) 
       const toCommit = commits[i];
       const fromCommit = commits[i + 1];
 
+      const toHash = toCommit.oid.substring(0, 7);
+      const fromHash = fromCommit.oid.substring(0, 7);
+
       try {
         // Get changed files between these two commits
         const changedFiles = await getChangedFilesBetween(fs, dir, fromCommit.oid, toCommit.oid);
@@ -57,7 +60,10 @@ export async function scanGitHistory(rootHandle, graph = null, maxCommits = 10) 
           return RELEVANT_EXTENSIONS.some(ext => lower.endsWith(ext));
         });
 
-        if (relevantFiles.length === 0) continue;
+        if (relevantFiles.length === 0) {
+          console.debug(`[git-scan] ${fromHash}..${toHash}: ${changedFiles.length} changed files, 0 relevant — skipped`);
+          continue;
+        }
 
         // Build before/after file maps
         const [beforeFiles, afterFiles] = await Promise.all([
@@ -66,6 +72,8 @@ export async function scanGitHistory(rootHandle, graph = null, maxCommits = 10) 
         ]);
         // Run change detection
         const { changes, summary } = detectChanges(beforeFiles, afterFiles, graph);
+
+        console.debug(`[git-scan] ${fromHash}..${toHash}: ${relevantFiles.length} relevant files, ${changes.length} changes detected`);
 
         if (changes.length > 0) {
           scanResults.push({
@@ -84,7 +92,7 @@ export async function scanGitHistory(rootHandle, graph = null, maxCommits = 10) 
           });
         }
       } catch (err) {
-        console.warn(`Failed to compare commits ${fromCommit.oid.substring(0, 7)}..${toCommit.oid.substring(0, 7)}:`, err.message);
+        console.warn(`[git-scan] Failed to compare ${fromHash}..${toHash}:`, err);
       }
     }
   } catch (err) {

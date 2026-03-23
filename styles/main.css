@@ -2160,6 +2160,42 @@ mark {
   color: var(--text-secondary);
   font-weight: 600;
 }
+/* Commit group collapsible sections */
+.commit-group {
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  margin-bottom: 8px;
+  overflow: hidden;
+}
+.commit-group-summary {
+  cursor: pointer;
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  font-size: 12px;
+  user-select: none;
+}
+.commit-group-summary:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+.commit-group[open] > .commit-group-summary {
+  border-bottom: 1px solid var(--border-color);
+}
+.commit-group > .change-history-list {
+  padding: 8px;
+}
+.commit-group-msg {
+  color: var(--text-secondary);
+  font-style: italic;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
 .change-dax-details {
   margin-top: 6px;
 }

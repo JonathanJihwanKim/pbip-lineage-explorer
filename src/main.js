@@ -551,17 +551,40 @@ async function scanGitChanges(rootHandle) {
     updateChangeCounts(measureChangeCounts);
 
     // Build page-level change counts for visual sidebar badges
+    // Include both direct page-scoped changes and changes that impact visuals on the page
     const pageChangeCounts = new Map();
     for (const change of flatChanges) {
+      const counted = new Set();
       const pageName = change.target?.pageName;
       if (pageName) {
         pageChangeCounts.set(pageName, (pageChangeCounts.get(pageName) || 0) + 1);
+        counted.add(pageName);
+      }
+      // Also count changes that impact visuals on a page (e.g. measure changes)
+      if (change.impact) {
+        for (const imp of change.impact) {
+          if (imp.pageName && !counted.has(imp.pageName)) {
+            pageChangeCounts.set(imp.pageName, (pageChangeCounts.get(imp.pageName) || 0) + 1);
+            counted.add(imp.pageName);
+          }
+        }
       }
     }
     updatePageChangeCounts(pageChangeCounts);
 
     if (flatChanges.length > 0) {
-      showGitScanStatus('found', flatChanges.length, measureChangeCounts.size);
+      const commitCount = new Set(flatChanges.map(c => c.commitHash)).size;
+      const pageCount = pageChangeCounts.size;
+      const visualCount = new Set(
+        flatChanges.filter(c => c.scope === 'visual').map(c => c.target?.visualId).filter(Boolean)
+      ).size;
+      showGitScanStatus('found', {
+        changeCount: flatChanges.length,
+        commitCount,
+        measureCount: measureChangeCounts.size,
+        pageCount,
+        visualCount,
+      });
       // Re-render current lineage view so change history section appears
       if (state.currentSelection?.type === 'measure') {
         handleMeasureSelect(state.currentSelection.id, { skipHistory: true });
@@ -577,7 +600,7 @@ async function scanGitChanges(rootHandle) {
   }
 }
 
-function showGitScanStatus(status, changeCount = 0, measureCount = 0) {
+function showGitScanStatus(status, opts = {}) {
   let el = document.getElementById('git-scan-status');
   if (!el) {
     el = document.createElement('div');
@@ -594,10 +617,18 @@ function showGitScanStatus(status, changeCount = 0, measureCount = 0) {
     el.innerHTML = '<span class="git-scan-dot scanning"></span> Scanning git history...';
     el.classList.remove('hidden');
   } else if (status === 'found') {
-    const msg = measureCount > 0
-      ? `${changeCount} change${changeCount !== 1 ? 's' : ''} across ${measureCount} measure${measureCount !== 1 ? 's' : ''}`
-      : `${changeCount} change${changeCount !== 1 ? 's' : ''} detected`;
+    const { changeCount = 0, commitCount = 0, measureCount = 0, pageCount = 0, visualCount = 0 } = opts;
+    const cs = changeCount !== 1 ? 's' : '';
+    const cms = commitCount !== 1 ? 's' : '';
+    const msg = `${commitCount} commit${cms} · ${changeCount} change${cs}`;
+    // Build tooltip with breakdown (only non-zero items)
+    const parts = [];
+    if (measureCount > 0) parts.push(`${measureCount} measure${measureCount !== 1 ? 's' : ''}`);
+    if (pageCount > 0) parts.push(`${pageCount} page${pageCount !== 1 ? 's' : ''}`);
+    if (visualCount > 0) parts.push(`${visualCount} visual${visualCount !== 1 ? 's' : ''}`);
+    const tooltip = parts.length > 0 ? parts.join(' · ') : '';
     el.innerHTML = `<span class="git-scan-dot found"></span> ${msg}`;
+    if (tooltip) el.title = tooltip;
     el.classList.remove('hidden');
     setTimeout(() => el.classList.add('fade'), 8000);
   } else if (status === 'none') {
@@ -839,7 +870,8 @@ function handlePageChangeBadgeClick(pageName) {
   if (!state.changeData?.flatChanges) return;
 
   const pageChanges = state.changeData.flatChanges.filter(c =>
-    c.target && c.target.pageName === pageName
+    (c.target && c.target.pageName === pageName) ||
+    (c.impact && c.impact.some(imp => imp.pageName === pageName))
   );
   if (pageChanges.length === 0) return;
 

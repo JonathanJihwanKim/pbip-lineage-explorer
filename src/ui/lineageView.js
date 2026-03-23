@@ -718,14 +718,15 @@ export function renderPageChangeHistory(pageName, changes) {
     if (oldSub && oldSub.classList.contains('lineage-subtitle')) oldSub.remove();
     const sub = document.createElement('div');
     sub.className = 'lineage-subtitle';
-    sub.textContent = `${changes.length} change${changes.length !== 1 ? 's' : ''} in recent commits`;
+    const commitCount = new Set(changes.map(c => c.commitHash)).size;
+    sub.textContent = `${changes.length} change${changes.length !== 1 ? 's' : ''} across ${commitCount} commit${commitCount !== 1 ? 's' : ''}`;
     titleEl.insertAdjacentElement('afterend', sub);
   }
 
   if (sectionsContainer) {
     let html = '<div class="lineage-section change-history-section">';
     html += `<h3>Page Change History <span class="section-summary-count">${changes.length}</span></h3>`;
-    html += renderChangeItems(changes);
+    html += renderChangeItemsGroupedByCommit(changes);
     html += '</div>';
     sectionsContainer.innerHTML = html;
   }
@@ -753,6 +754,40 @@ function renderChangeItems(changes) {
     html += '</div>';
   }
   html += '</div>';
+  return html;
+}
+
+/**
+ * Render change items grouped by commit, each group collapsible (default collapsed).
+ */
+function renderChangeItemsGroupedByCommit(changes) {
+  // Group by commitHash
+  const groups = new Map();
+  for (const c of changes) {
+    const key = c.commitHash || 'unknown';
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(c);
+  }
+  // Sort by date descending (newest first)
+  const sorted = [...groups.entries()].sort((a, b) => {
+    const dateA = a[1][0].commitDate || '';
+    const dateB = b[1][0].commitDate || '';
+    return dateB.localeCompare(dateA);
+  });
+
+  let html = '';
+  for (const [hash, groupChanges] of sorted) {
+    const first = groupChanges[0];
+    html += '<details class="commit-group">';
+    html += '<summary class="commit-group-summary">';
+    html += `<span class="change-commit-info">${esc(hash)}</span>`;
+    if (first.commitDate) html += ` <span class="change-date">${formatDate(first.commitDate)}</span>`;
+    if (first.commitMessage) html += ` <span class="commit-group-msg">${esc(first.commitMessage)}</span>`;
+    html += ` <span class="section-summary-count">${groupChanges.length}</span>`;
+    html += '</summary>';
+    html += renderChangeItems(groupChanges);
+    html += '</details>';
+  }
   return html;
 }
 
