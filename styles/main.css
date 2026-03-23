@@ -336,6 +336,19 @@ button .icon { margin-right: 4px; }
   color: #a0a0c0;
   background: rgba(160, 160, 192, 0.12);
 }
+.measure-badge-changed {
+  color: #ff9800;
+  background: rgba(255, 152, 0, 0.15);
+  font-weight: 600;
+  min-width: 14px;
+  text-align: center;
+}
+.page-change-badge {
+  cursor: pointer;
+}
+.page-change-badge:hover {
+  background: rgba(255, 152, 0, 0.3);
+}
 .measure-item.is-hidden-field {
   opacity: 0.6;
 }
@@ -1985,6 +1998,177 @@ mark {
 .health-orphan-table {
   font-size: 11px;
   color: var(--text-muted);
+}
+
+/* --- Git Scan Status --- */
+.git-scan-status {
+  font-size: 12px;
+  color: #ffd54f;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  background: rgba(255, 213, 79, 0.1);
+  border-radius: 4px;
+  white-space: nowrap;
+  transition: opacity 0.5s;
+}
+.git-scan-status.fade {
+  opacity: 0.6;
+}
+.git-scan-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  display: inline-block;
+}
+.git-scan-dot.scanning {
+  background: #ff9800;
+  animation: pulse-dot 1s infinite;
+}
+.git-scan-dot.found {
+  background: #4caf50;
+}
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+/* --- Change History Section --- */
+.change-history-section {
+  border-top: 1px solid var(--border-color);
+}
+.change-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.change-history-item {
+  background: rgba(255, 152, 0, 0.04);
+  border: 1px solid rgba(255, 152, 0, 0.12);
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+.change-history-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.change-type-badge {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-weight: 600;
+  text-transform: capitalize;
+  white-space: nowrap;
+}
+.change-type-badge.change-type-measure {
+  background: rgba(255, 152, 0, 0.15);
+  color: #ff9800;
+}
+.change-type-badge.change-type-page {
+  background: rgba(76, 175, 80, 0.15);
+  color: #4caf50;
+}
+.change-type-badge.change-type-visual {
+  background: rgba(33, 150, 243, 0.15);
+  color: #2196f3;
+}
+.change-type-badge.change-type-report {
+  background: rgba(156, 39, 176, 0.15);
+  color: #9c27b0;
+}
+.change-type-badge.change-type-bookmark {
+  background: rgba(0, 188, 212, 0.15);
+  color: #00bcd4;
+}
+.change-commit-info {
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.change-date {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.change-description {
+  font-size: 13px;
+  color: var(--text-primary);
+  line-height: 1.5;
+}
+.change-commit-msg {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+  font-style: italic;
+}
+.change-impact {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.change-impact-label {
+  font-weight: 600;
+  color: #ff9800;
+}
+.change-impact-item {
+  background: rgba(255, 152, 0, 0.08);
+  padding: 1px 4px;
+  border-radius: 3px;
+  margin: 0 2px;
+}
+.change-history-group-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+.change-impact-page {
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+.change-dax-details {
+  margin-top: 6px;
+}
+.change-dax-summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--color-measure);
+  user-select: none;
+}
+.change-dax-summary:hover {
+  text-decoration: underline;
+}
+.change-dax-diff {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.change-dax-block .chain-dax {
+  max-height: 160px;
+}
+.change-dax-label {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+.change-dax-before .change-dax-label {
+  color: #ef5350;
+}
+.change-dax-before .chain-dax {
+  border-left: 2px solid rgba(239, 83, 80, 0.4);
+}
+.change-dax-after .change-dax-label {
+  color: #66bb6a;
+}
+.change-dax-after .chain-dax {
+  border-left: 2px solid rgba(102, 187, 106, 0.4);
 }
 
 /* --- Responsive --- */

@@ -15,7 +15,8 @@
   },
   "dependencies": {
     "@pbip-lineage/core": "workspace:*",
-    "d3": "^7.9.0"
+    "d3": "^7.9.0",
+    "isomorphic-git": "^1.37.4"
   },
   "devDependencies": {
     "vite": "^5.4.0",
@@ -26,5 +27,13 @@
     "type": "git",
     "url": "https://github.com/JonathanJihwanKim/pbip-lineage-explorer"
   },
-  "keywords": ["power-bi", "pbip", "lineage", "pbir", "tmdl", "dax", "data-lineage"]
+  "keywords": [
+    "power-bi",
+    "pbip",
+    "lineage",
+    "pbir",
+    "tmdl",
+    "dax",
+    "data-lineage"
+  ]
 }

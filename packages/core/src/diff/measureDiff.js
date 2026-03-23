@@ -182,13 +182,11 @@ function buildCalcItemMap(tables) {
 
 /**
  * Normalize a DAX expression for comparison.
- * Removes comments, normalizes whitespace.
+ * Normalizes whitespace to avoid false positives from formatting changes.
  */
 function normalizeExpression(expr) {
   if (!expr) return '';
   return expr
-    .replace(/\/\/.*$/gm, '')     // remove line comments
-    .replace(/\/\*[\s\S]*?\*\//g, '') // remove block comments
     .replace(/\s+/g, ' ')         // normalize whitespace
     .trim();
 }

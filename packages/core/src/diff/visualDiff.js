@@ -246,7 +246,7 @@ function extractFieldsSimple(config) {
  */
 function extractBookmarkRefs(config) {
   const refs = [];
-  const bookmarkPattern = /Bookmark[a-f0-9]{20,}/g;
+  const bookmarkPattern = /Bookmark[a-fA-F0-9]{20,}/g;
   const json = JSON.stringify(config);
   let match;
   while ((match = bookmarkPattern.exec(json)) !== null) {

@@ -38,7 +38,9 @@ export async function openProjectFolder() {
   }
 
   // Default: treat as project root — discover .Report and .SemanticModel subfolders
-  return await handleProjectRoot(rootHandle);
+  const result = await handleProjectRoot(rootHandle);
+  result.rootHandle = rootHandle;
+  return result;
 }
 
 /**

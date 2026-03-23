@@ -12,6 +12,7 @@ let _onVisualNavigate = null;
 let _currentGraph = null;
 let _currentLineage = null;
 let _currentMeasureName = null;
+let _changeData = null; // { flatChanges, measureChangeCounts }
 
 /**
  * Initialize the lineage view.
@@ -19,6 +20,14 @@ let _currentMeasureName = null;
 export function initLineageView(callbacks = {}) {
   _onMeasureNavigate = callbacks.onMeasureNavigate;
   _onVisualNavigate = callbacks.onVisualNavigate;
+}
+
+/**
+ * Set change history data for rendering in lineage sections.
+ * @param {{ flatChanges: Array, measureChangeCounts: Map }} data
+ */
+export function setChangeData(data) {
+  _changeData = data;
 }
 
 /**
@@ -67,6 +76,7 @@ export function renderLineage(lineage, measureName, graph) {
     html += renderMeasureChainSection(lineage.measureChain, lineage.summaryTrees, lineage.sourceTable);
     html += renderSourceTableSection(lineage.sourceTable);
     html += renderSummarySection(lineage.summaryTrees, lineage.measureChain, lineage.sourceTable);
+    html += renderChangeHistorySection(measureName, lineage.visuals);
     sectionsContainer.innerHTML = html;
     bindClickHandlers(sectionsContainer);
   }
@@ -131,6 +141,9 @@ export function renderVisualLineage(visualLineage, graph) {
     html += `<td class="lineage-mono">${esc(visual.objectId)}</td>`;
     html += '</tr></tbody></table></div>';
     html += '</div>';
+
+    // Change history for this visual's page and measures (placed before measure accordions)
+    html += renderVisualChangeHistorySection(visual, allMeasures);
 
     // Field parameter indicator (if FP measures found)
     if (fieldParameterMeasures && fieldParameterMeasures.length > 0) {
@@ -531,6 +544,286 @@ function renderSummaryChainNode(chain, depth, colSourceMap) {
   }
 
   return html;
+}
+
+// --- Section 5: Change History ---
+
+function renderChangeHistorySection(measureName, visuals) {
+  if (!_changeData || !_changeData.flatChanges || _changeData.flatChanges.length === 0) {
+    return '';
+  }
+
+  // Direct measure DAX changes
+  const measureChanges = _changeData.flatChanges.filter(c =>
+    c.target?.measureName === measureName
+  );
+
+  // Contextual changes: only changes for THIS measure's visuals + page-level filters
+  let contextChanges = [];
+  if (visuals && visuals.length > 0) {
+    const visualGuids = new Set();
+    const pageIds = new Set();
+    const pageNames = new Set();
+    for (const v of visuals) {
+      const parts = v.id?.split('::')[1]?.split('/');
+      if (parts?.[0]) pageIds.add(parts[0]);
+      if (parts?.[1]) visualGuids.add(parts[1]);
+      if (v.page) pageNames.add(v.page);
+    }
+
+    contextChanges = _changeData.flatChanges.filter(c => {
+      if (!c.target) return false;
+      if (c.scope === 'measure') return false;
+      // Visual-scope: only changes for THIS measure's visuals
+      if (c.scope === 'visual') {
+        return c.target.visualId && visualGuids.has(c.target.visualId);
+      }
+      // Page-scope: page-level filters affect all visuals on the page
+      if (c.scope === 'page') {
+        if (c.target.pageId && pageIds.has(c.target.pageId)) return true;
+        if (c.target.pageName && pageNames.has(c.target.pageName)) return true;
+        return false;
+      }
+      // Bookmark/report: exclude
+      return false;
+    });
+  }
+
+  const total = measureChanges.length + contextChanges.length;
+  if (total === 0) return '';
+
+  let html = '<div class="lineage-section change-history-section">';
+  html += `<h3>5. Change History <span class="section-summary-count">${total} change${total !== 1 ? 's' : ''}</span></h3>`;
+
+  if (measureChanges.length > 0) {
+    html += '<div class="change-history-group-label">DAX expression changes</div>';
+    html += renderChangeItems(measureChanges);
+  }
+
+  if (contextChanges.length > 0) {
+    if (measureChanges.length > 0) {
+      html += '<div class="change-history-group-label" style="margin-top:12px">Related page &amp; visual changes</div>';
+    }
+    html += renderChangeItems(contextChanges);
+  }
+
+  html += '</div>';
+  return html;
+}
+
+/**
+ * Render change history for a visual — shows changes on the same page.
+ * @param {object} visual - Visual info from traceVisualLineage().
+ */
+function renderVisualChangeHistorySection(visual, measures) {
+  if (!_changeData || !_changeData.flatChanges || _changeData.flatChanges.length === 0) {
+    return '';
+  }
+
+  // Extract pageId and visualId from visual node ID: "visual::pageId/visualId"
+  const idParts = visual.id?.split('::')[1]?.split('/');
+  const pageId = idParts?.[0] || '';
+  const visualId = idParts?.[1] || visual.objectId || '';
+  const pageName = visual.page || '';
+
+  // Extract measure names used by this visual
+  const measureNames = new Set();
+  if (measures) {
+    for (const m of measures) {
+      if (m.measureName) measureNames.add(m.measureName);
+    }
+  }
+
+  const measureChanges = [];
+  const visualChanges = [];
+  const pageChanges = [];
+
+  for (const c of _changeData.flatChanges) {
+    if (!c.target) continue;
+    // Measure-scope: DAX changes for measures used by this visual
+    if (c.scope === 'measure' && c.target.measureName && measureNames.has(c.target.measureName)) {
+      measureChanges.push(c);
+      continue;
+    }
+    // Direct visual match: change targets this exact visual
+    if (c.scope === 'visual' && c.target.visualId && c.target.visualId === visualId) {
+      visualChanges.push(c);
+      continue;
+    }
+    // Page-scope changes: page-level filters affect all visuals on the page
+    if (c.scope === 'page') {
+      if ((c.target.pageId && c.target.pageId === pageId) ||
+          (c.target.pageName && c.target.pageName === pageName)) {
+        pageChanges.push(c);
+      }
+    }
+  }
+
+  const total = measureChanges.length + visualChanges.length + pageChanges.length;
+  if (total === 0) return '';
+
+  let html = '<div class="lineage-section change-history-section">';
+  html += `<h3>Change History <span class="section-summary-count">${total} change${total !== 1 ? 's' : ''}</span></h3>`;
+
+  if (measureChanges.length > 0) {
+    html += '<div class="change-history-group-label">DAX expression changes</div>';
+    html += renderChangeItems(measureChanges);
+  }
+
+  if (visualChanges.length > 0) {
+    if (measureChanges.length > 0) {
+      html += '<div class="change-history-group-label" style="margin-top:12px">Visual changes</div>';
+    } else {
+      html += '<div class="change-history-group-label">Visual changes</div>';
+    }
+    html += renderChangeItems(visualChanges);
+  }
+
+  if (pageChanges.length > 0) {
+    if (measureChanges.length > 0 || visualChanges.length > 0) {
+      html += '<div class="change-history-group-label" style="margin-top:12px">Page-level changes</div>';
+    }
+    html += renderChangeItems(pageChanges);
+  }
+
+  html += '</div>';
+  return html;
+}
+
+/**
+ * Render page change history in the main content area.
+ * Called when user clicks a page change badge in the sidebar.
+ */
+export function renderPageChangeHistory(pageName, changes) {
+  const empty = document.getElementById('lineage-empty');
+  const content = document.getElementById('lineage-content');
+  const titleEl = document.getElementById('lineage-title');
+  const treeContainer = document.getElementById('lineage-tree-container');
+  const sectionsContainer = document.getElementById('lineage-sections');
+
+  if (!content) return;
+
+  if (empty) empty.classList.add('hidden');
+  content.classList.remove('hidden');
+
+  if (treeContainer) {
+    destroyTree(treeContainer);
+    const toolbar = treeContainer.querySelector('.export-toolbar');
+    if (toolbar) toolbar.remove();
+  }
+
+  if (titleEl) {
+    titleEl.textContent = pageName;
+    const oldSub = titleEl.nextElementSibling;
+    if (oldSub && oldSub.classList.contains('lineage-subtitle')) oldSub.remove();
+    const sub = document.createElement('div');
+    sub.className = 'lineage-subtitle';
+    sub.textContent = `${changes.length} change${changes.length !== 1 ? 's' : ''} in recent commits`;
+    titleEl.insertAdjacentElement('afterend', sub);
+  }
+
+  if (sectionsContainer) {
+    let html = '<div class="lineage-section change-history-section">';
+    html += `<h3>Page Change History <span class="section-summary-count">${changes.length}</span></h3>`;
+    html += renderChangeItems(changes);
+    html += '</div>';
+    sectionsContainer.innerHTML = html;
+  }
+}
+
+function renderChangeItems(changes) {
+  let html = '<div class="change-history-list">';
+  for (const change of changes) {
+    html += '<div class="change-history-item">';
+    html += `<div class="change-history-header">`;
+    html += `<span class="change-type-badge change-type-${change.scope || 'measure'}">${formatChangeType(change.type)}</span>`;
+    html += `<span class="change-commit-info" title="${esc(change.commitHash)}">${esc(change.commitHash)}</span>`;
+    if (change.commitDate) {
+      html += ` <span class="change-date">${formatDate(change.commitDate)}</span>`;
+    }
+    html += '</div>';
+    html += `<div class="change-description">${esc(change.description)}</div>`;
+    if (change.commitMessage) {
+      html += `<div class="change-commit-msg">${esc(change.commitMessage)}</div>`;
+    }
+    // DAX expression diff for measure/calc changes
+    html += renderExpressionDiff(change);
+    // Impact chain (grouped by page)
+    html += renderImpactChain(change.impact);
+    html += '</div>';
+  }
+  html += '</div>';
+  return html;
+}
+
+/**
+ * Render collapsible before/after DAX expression diff.
+ */
+function renderExpressionDiff(change) {
+  if (!change.details) return '';
+  const before = change.details.before?.expression;
+  const after = change.details.after?.expression;
+  if (!before && !after) return '';
+
+  let html = '<details class="change-dax-details">';
+  html += '<summary class="change-dax-summary">View expression change</summary>';
+  html += '<div class="change-dax-diff">';
+
+  if (before && after) {
+    html += `<div class="change-dax-block change-dax-before"><span class="change-dax-label">Before</span><div class="chain-dax">${highlightDax(before)}</div></div>`;
+    html += `<div class="change-dax-block change-dax-after"><span class="change-dax-label">After</span><div class="chain-dax">${highlightDax(after)}</div></div>`;
+  } else if (after) {
+    html += `<div class="change-dax-block change-dax-after"><span class="change-dax-label">Added</span><div class="chain-dax">${highlightDax(after)}</div></div>`;
+  } else if (before) {
+    html += `<div class="change-dax-block change-dax-before"><span class="change-dax-label">Removed</span><div class="chain-dax">${highlightDax(before)}</div></div>`;
+  }
+
+  html += '</div></details>';
+  return html;
+}
+
+/**
+ * Render impact chain grouped by page, deduplicated.
+ */
+function renderImpactChain(impact) {
+  if (!impact || impact.length === 0) return '';
+
+  // Deduplicate by visualId and group by page
+  const seen = new Set();
+  const byPage = new Map();
+  for (const imp of impact) {
+    const key = imp.visualId || imp.visualName || '';
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const page = imp.pageName || '(unknown)';
+    if (!byPage.has(page)) byPage.set(page, []);
+    byPage.get(page).push(imp);
+  }
+
+  let html = '<div class="change-impact">';
+  html += '<span class="change-impact-label">Impact:</span> ';
+  const groups = [];
+  for (const [page, items] of byPage) {
+    const visuals = items.map(imp =>
+      `<span class="change-impact-item" title="${esc(imp.reason || '')}">${esc(imp.visualName || imp.visualId || 'unknown')}</span>`
+    ).join(', ');
+    groups.push(`<span class="change-impact-page">${esc(page)}</span> → ${visuals}`);
+  }
+  html += groups.join(' · ');
+  html += '</div>';
+  return html;
+}
+
+function formatChangeType(type) {
+  if (!type) return 'change';
+  return type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function formatDate(isoStr) {
+  try {
+    const d = new Date(isoStr);
+    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  } catch { return isoStr; }
 }
 
 // --- DAX Syntax Highlighting ---

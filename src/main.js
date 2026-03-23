@@ -17,13 +17,14 @@ import { openProjectFolder, loadSelectedReport, loadSemanticModelFolder } from '
 
 // UI
 import { initToolbar, updateStats, showLoading, hideLoading } from './ui/toolbar.js';
-import { initMeasurePicker, populateMeasures, selectMeasure } from './ui/measurePicker.js';
-import { initVisualBrowser, populateVisuals, selectVisual } from './ui/visualBrowser.js';
-import { initLineageView, renderLineage, renderVisualLineage, clearLineage } from './ui/lineageView.js';
+import { initMeasurePicker, populateMeasures, selectMeasure, updateChangeCounts } from './ui/measurePicker.js';
+import { initVisualBrowser, populateVisuals, selectVisual, updatePageChangeCounts } from './ui/visualBrowser.js';
+import { initLineageView, renderLineage, renderVisualLineage, clearLineage, setChangeData, renderPageChangeHistory } from './ui/lineageView.js';
 import { populateSourceMapping, renderSourceMapping } from './ui/sourceMapping.js';
 import { initPageLayout, renderPageLayout } from './ui/pageLayout.js';
 import { initImpactPanel, openImpactPanel } from './ui/impactPanel.js';
 import { initModelHealth, toggleModelHealth, closeModelHealth } from './ui/modelHealth.js';
+import { scanGitHistory } from './parser/gitScanner.js';
 
 const state = {
   graph: null,
@@ -35,6 +36,8 @@ const state = {
   navigationHistory: [], // stack of { type: 'measure'|'visual', id: string }
   currentSelection: null, // { type: 'measure'|'visual', id: string }
   sessionStats: { measuresTraced: 0, columnsmapped: 0, visualsExplored: 0 },
+  rootHandle: null, // FileSystemDirectoryHandle for git scanning
+  changeData: null, // { flatChanges, measureChangeCounts }
 };
 
 // Sample project file manifest (fetched from /sample-pbip/)
@@ -61,7 +64,7 @@ const SAMPLE_FILES = [
 function init() {
   initToolbar({ onOpenFolder: handleOpenFolder });
   initMeasurePicker({ onSelect: handleMeasureSelect });
-  initVisualBrowser({ onVisualSelect: handleVisualSelect, onMeasureNavigate: handleMeasureSelect, onPageLayoutSelect: handlePageLayoutSelect });
+  initVisualBrowser({ onVisualSelect: handleVisualSelect, onMeasureNavigate: handleMeasureSelect, onPageLayoutSelect: handlePageLayoutSelect, onPageChangeBadgeClick: handlePageChangeBadgeClick });
   initLineageView({ onMeasureNavigate: handleMeasureSelect, onVisualNavigate: handleVisualSelect });
   initPageLayout({ onVisualSelect: handleVisualSelect });
   initImpactPanel({ onMeasureNavigate: handleMeasureSelect, onVisualNavigate: handleVisualSelect });
@@ -529,6 +532,81 @@ async function loadProjectResult(projectResult) {
 
   // Restore selection from URL hash (deep link)
   restoreFromHash();
+
+  // Async git history scan (non-blocking)
+  if (projectResult.rootHandle) {
+    state.rootHandle = projectResult.rootHandle;
+    scanGitChanges(projectResult.rootHandle);
+  }
+}
+
+// --- Git Change History ---
+
+async function scanGitChanges(rootHandle) {
+  try {
+    showGitScanStatus('scanning');
+    const { flatChanges, measureChangeCounts } = await scanGitHistory(rootHandle, state.graph);
+    state.changeData = { flatChanges, measureChangeCounts };
+    setChangeData(state.changeData);
+    updateChangeCounts(measureChangeCounts);
+
+    // Build page-level change counts for visual sidebar badges
+    const pageChangeCounts = new Map();
+    for (const change of flatChanges) {
+      const pageName = change.target?.pageName;
+      if (pageName) {
+        pageChangeCounts.set(pageName, (pageChangeCounts.get(pageName) || 0) + 1);
+      }
+    }
+    updatePageChangeCounts(pageChangeCounts);
+
+    if (flatChanges.length > 0) {
+      showGitScanStatus('found', flatChanges.length, measureChangeCounts.size);
+      // Re-render current lineage view so change history section appears
+      if (state.currentSelection?.type === 'measure') {
+        handleMeasureSelect(state.currentSelection.id, { skipHistory: true });
+      } else if (state.currentSelection?.type === 'visual') {
+        handleVisualSelect(state.currentSelection.id, { skipHistory: true });
+      }
+    } else {
+      showGitScanStatus('none');
+    }
+  } catch (err) {
+    showGitScanStatus('error');
+    console.warn('Git history scan skipped:', err.message);
+  }
+}
+
+function showGitScanStatus(status, changeCount = 0, measureCount = 0) {
+  let el = document.getElementById('git-scan-status');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'git-scan-status';
+    el.className = 'git-scan-status';
+    const stats = document.getElementById('stats');
+    if (stats) stats.parentNode.insertBefore(el, stats.nextSibling);
+    else {
+      const toolbar = document.querySelector('.toolbar-left') || document.querySelector('.toolbar');
+      if (toolbar) toolbar.appendChild(el);
+    }
+  }
+  if (status === 'scanning') {
+    el.innerHTML = '<span class="git-scan-dot scanning"></span> Scanning git history...';
+    el.classList.remove('hidden');
+  } else if (status === 'found') {
+    const msg = measureCount > 0
+      ? `${changeCount} change${changeCount !== 1 ? 's' : ''} across ${measureCount} measure${measureCount !== 1 ? 's' : ''}`
+      : `${changeCount} change${changeCount !== 1 ? 's' : ''} detected`;
+    el.innerHTML = `<span class="git-scan-dot found"></span> ${msg}`;
+    el.classList.remove('hidden');
+    setTimeout(() => el.classList.add('fade'), 8000);
+  } else if (status === 'none') {
+    el.innerHTML = '<span class="git-scan-dot"></span> No recent changes detected';
+    el.classList.remove('hidden');
+    setTimeout(() => el.classList.add('hidden'), 5000);
+  } else {
+    el.classList.add('hidden');
+  }
 }
 
 // --- Semantic Model Loading ---
@@ -755,6 +833,33 @@ function handlePageLayoutSelect(pageName, { skipHistory = false } = {}) {
 
   renderPageLayout(pageNode, state.graph);
   updateBackButton();
+}
+
+function handlePageChangeBadgeClick(pageName) {
+  if (!state.changeData?.flatChanges) return;
+
+  const pageChanges = state.changeData.flatChanges.filter(c =>
+    c.target && c.target.pageName === pageName
+  );
+  if (pageChanges.length === 0) return;
+
+  // Exit source map / model health views if active
+  if (state.sourceMapVisible) {
+    state.sourceMapVisible = false;
+    const btn = document.getElementById('btn-source-map');
+    if (btn) btn.classList.remove('active');
+    const sourceMapContainer = document.getElementById('source-map-container');
+    if (sourceMapContainer) sourceMapContainer.classList.add('hidden');
+  }
+  closeModelHealth();
+
+  if (state.currentSelection) {
+    state.navigationHistory.push(state.currentSelection);
+  }
+  state.currentSelection = { type: 'pageChanges', id: pageName };
+  updateBackButton();
+
+  renderPageChangeHistory(pageName, pageChanges);
 }
 
 function showLineageMessage(message) {

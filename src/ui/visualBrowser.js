@@ -8,6 +8,7 @@ let _callbacks = {};
 let _visuals = []; // { id, title, type, page, pageOrdinal, measureCount, columnCount }
 let _allPages = []; // { name, ordinal } — all pages including empty ones
 let _searchQuery = '';
+let _pageChangeCounts = new Map(); // pageName → change count
 
 /**
  * Initialize the visual browser.
@@ -147,7 +148,9 @@ function renderList(visuals) {
     if (items.length === 0) {
       html += `<summary class="visual-group-header">${esc(page)} <span class="measure-group-count empty-page">(empty)</span></summary>`;
     } else {
-      html += `<summary class="visual-group-header">${esc(page)} <span class="measure-group-count">(${items.length})</span>`;
+      const pgChangeCount = _pageChangeCounts.get(page) || 0;
+      const pgChangeBadge = pgChangeCount > 0 ? ` <span class="measure-badge measure-badge-changed page-change-badge" data-page="${esc(page)}" title="${pgChangeCount} change${pgChangeCount !== 1 ? 's' : ''} on this page — click to view">${pgChangeCount}</span>` : '';
+      html += `<summary class="visual-group-header">${esc(page)} <span class="measure-group-count">(${items.length})</span>${pgChangeBadge}`;
       html += `<button class="page-layout-btn" data-page="${esc(page)}" aria-label="View page layout"><svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><rect x="1" y="1" width="5" height="5" rx="1"/><rect x="8" y="1" width="5" height="5" rx="1"/><rect x="1" y="8" width="5" height="5" rx="1"/><rect x="8" y="8" width="5" height="5" rx="1"/></svg></button>`;
       html += `</summary>`;
     }
@@ -216,6 +219,17 @@ function renderList(visuals) {
       if (tip) tip.classList.add('hidden');
     });
   });
+
+  container.querySelectorAll('.page-change-badge').forEach(badge => {
+    badge.style.cursor = 'pointer';
+    badge.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (_callbacks.onPageChangeBadgeClick) {
+        _callbacks.onPageChangeBadgeClick(badge.dataset.page);
+      }
+    });
+  });
 }
 
 /**
@@ -231,6 +245,15 @@ function generateVisualLabel(v) {
 /**
  * Programmatically select a visual by ID.
  */
+/**
+ * Update page-level change counts for sidebar badges.
+ * @param {Map<string, number>} counts - pageName → change count
+ */
+export function updatePageChangeCounts(counts) {
+  _pageChangeCounts = counts || new Map();
+  filterVisuals(_searchQuery); // re-render with badges
+}
+
 export function selectVisual(visualId) {
   const container = document.getElementById('visual-list');
   if (!container) return;

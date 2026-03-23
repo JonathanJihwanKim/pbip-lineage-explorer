@@ -241,14 +241,14 @@ describe('Measure changes', () => {
     expect(removed.target.measureName).toBe('Profit');
   });
 
-  it('ignores comment-only changes in measures', () => {
+  it('detects comment changes in measures', () => {
     const before = new Map([['tables/Measure.tmdl', 'table Measure\n\tmeasure Sales = \n\t\t// old comment\n\t\tSUM(T[A])']]);
     const after = new Map([['tables/Measure.tmdl', 'table Measure\n\tmeasure Sales = \n\t\t// new comment\n\t\tSUM(T[A])']]);
 
     const result = detectChanges(before, after);
     const measureChange = result.changes.find(c => c.type === CHANGE_TYPES.MEASURE_CHANGED);
 
-    expect(measureChange).toBeUndefined();
+    expect(measureChange).toBeDefined();
   });
 });
 

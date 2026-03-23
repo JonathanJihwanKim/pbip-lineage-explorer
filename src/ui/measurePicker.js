@@ -30,6 +30,7 @@ let _callbacks = {};
 let _measures = []; // { id, name, table, expression, isOrphan }
 let _graph = null;
 let _searchQuery = '';
+let _measureChangeCounts = new Map();
 
 /**
  * Populate the measure list from graph data.
@@ -126,14 +127,16 @@ function renderList(measures) {
 
   let html = '';
   for (const [table, items] of groups) {
-    html += `<details class="measure-group" open>`;
+    html += `<details class="measure-group">`;
     html += `<summary class="measure-group-header">${escapeHtml(table)} <span class="measure-group-count">(${items.length})</span></summary>`;
     html += `<div class="measure-group-items">`;
     for (const m of items) {
       const orphanBadge = m.isOrphan ? ' <span class="measure-badge measure-badge-orphan" title="Not used by any visual">orphan</span>' : '';
       const hiddenBadge = m.isHidden ? ' <span class="measure-badge measure-badge-hidden" title="Hidden from report view">hidden</span>' : '';
-      const tooltip = `${m.table}[${m.name}]${m.isOrphan ? ' (orphan)' : ''}${m.isHidden ? ' (hidden)' : ''}${m.description ? '\n' + m.description : ''}\n${m.expression.substring(0, 120)}`;
-      html += `<div class="measure-item${m.isHidden ? ' is-hidden-field' : ''}" data-id="${escapeHtml(m.id)}" title="${escapeHtml(tooltip)}">${highlightMatch(m.name, _searchQuery)}${hiddenBadge}${orphanBadge}</div>`;
+      const changeCount = _measureChangeCounts.get(m.name) || 0;
+      const changeBadge = changeCount > 0 ? ` <span class="measure-badge measure-badge-changed" title="${changeCount} change${changeCount !== 1 ? 's' : ''} in recent commits">${changeCount}</span>` : '';
+      const tooltip = `${m.table}[${m.name}]${m.isOrphan ? ' (orphan)' : ''}${m.isHidden ? ' (hidden)' : ''}${changeCount > 0 ? ` (${changeCount} recent change${changeCount !== 1 ? 's' : ''})` : ''}${m.description ? '\n' + m.description : ''}\n${m.expression.substring(0, 120)}`;
+      html += `<div class="measure-item${m.isHidden ? ' is-hidden-field' : ''}" data-id="${escapeHtml(m.id)}" title="${escapeHtml(tooltip)}">${highlightMatch(m.name, _searchQuery)}${hiddenBadge}${orphanBadge}${changeBadge}</div>`;
     }
     html += `</div></details>`;
   }
@@ -175,6 +178,15 @@ function highlightMatch(text, query) {
   const qEscaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const regex = new RegExp(`(${qEscaped})`, 'gi');
   return escaped.replace(regex, '<mark>$1</mark>');
+}
+
+/**
+ * Update change count badges on measure items.
+ * @param {Map<string, number>} counts - Map of measure name → change count.
+ */
+export function updateChangeCounts(counts) {
+  _measureChangeCounts = counts || new Map();
+  applyFilters(); // re-render with badges
 }
 
 function escapeHtml(str) {
