@@ -1,6 +1,6 @@
 # PBIP Lineage Explorer
 
-**Stop spending hours manually tracing DAX dependencies.** Open your PBIP folder, click a measure or visual, and see the full lineage tree — from visuals down to source columns — in seconds.
+**Stop spending hours manually tracing DAX dependencies — or wondering what changed in a colleague's last commit.** Open your PBIP folder and get instant lineage tracing + commit-by-commit change intelligence.
 
 [![Try Live Demo](https://img.shields.io/badge/Try%20Live%20Demo-▶%20Open%20in%20Browser-28a745?style=for-the-badge&logo=powerbi)](https://jonathanjihwankim.github.io/pbip-lineage-explorer/)
 [![Sponsor](https://img.shields.io/badge/Sponsor-❤%20Support%20This%20Tool-ea4aaa?style=for-the-badge&logo=github-sponsors)](https://github.com/sponsors/JonathanJihwanKim)
@@ -16,22 +16,26 @@
 ## The Problem
 
 - You rename a column and 3 reports break. **You have no idea which ones.**
-- You need to document lineage for a data engineer. You open **47 TMDL files** and start copy-pasting.
-- You want to know if a measure is used anywhere. You **search manually across every visual JSON file.**
 - You need to trace a KPI back to its source columns. You click through **Power BI Desktop for an hour.**
+- A colleague commits changes to the `.Report` folder — **you have no idea what visuals, filters, or measures changed.**
+- Someone modifies a shared measure — **you don't know which visuals are impacted downstream.**
+- You need to document lineage for a data engineer. You open **47 TMDL files** and start copy-pasting.
 
 **Each of these takes hours. This tool does it in seconds.**
 
 | | Manual | PBIP Lineage Explorer |
 |---|---|---|
-| 10 tables, 20 measures, 15 visuals | Hours of clicking through files | **< 10 seconds** |
 | Visual → measure → column chain | Copy-paste across dozens of files | **One-click interactive graph** |
 | Impact analysis ("what breaks?") | Not feasible at scale | **One click** |
+| What changed in the last 5 commits? | Diff raw JSON by hand | **Automatic change report** |
+| Downstream impact of a measure edit | Hope and pray | **Traced through refs, field params & calc groups** |
 | Source column mapping before rename | Spreadsheet archaeology | **Automatic** |
 
 ---
 
 ## What You Get
+
+### Lineage Tracking
 
 - **Visual-to-source lineage in one click** — trace any measure or visual through its full dependency chain
 - **DAX dependency tree** — see every referenced measure and column with syntax-highlighted DAX
@@ -40,7 +44,15 @@
 - **Source column mapping** — flat table showing PBI Column → Source Column with full rename chain tracking
 - **Orphan detection** — find measures that no visual references
 - **Field parameter & calculation group detection** — advanced patterns identified automatically
-- **Export** — SVG, PNG, CSV, or copy lineage as text to clipboard
+- **Export** — SVG, PNG, CSV, Markdown, or copy lineage to clipboard
+
+### Change Intelligence
+
+- **Commit-by-commit change detection** — see exactly what changed across pages, visuals, filters, measures, and bookmarks
+- **21 change types across 5 scopes** — from page add/remove to measure expression edits to visual field binding changes
+- **Downstream impact tracing** — when a measure changes, see every visual affected through direct refs, field parameters, and calculation groups
+- **Human-readable descriptions** — no raw JSON diffs, just plain-language summaries like "Measure [Revenue] expression changed in table 'Finance'"
+- **Works in browser and VS Code** — same detection engine, both platforms
 
 > Your files never leave your browser. All parsing happens client-side — nothing is uploaded anywhere.
 
@@ -85,8 +97,9 @@ Also available as a VS Code extension for developers who work directly in PBIP/T
 
 - Search **"PBIP Lineage Explorer"** in the VS Code Extensions marketplace
 - Auto-activates when your workspace contains `.tmdl` files
-- **Sidebar panels**: Measure Explorer, Orphan Measures, Model Stats
-- **CodeLens**: inline "Trace Lineage" links above measure definitions — click to view lineage without leaving your editor
+- **Sidebar panels**: Measure Explorer, Orphan Measures, Model Stats, **Change History**
+- **CodeLens**: inline "Trace Lineage" links above measure definitions
+- **Change History panel**: auto-scans recent commits, shows changes grouped by commit → scope → detail with impact badges
 
 ---
 
