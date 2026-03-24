@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { readFileSync, readdirSync, statSync } from 'fs';
 import { join } from 'path';
-import { identifyProjectStructure, analyze, findOrphans, traceMeasureLineage, extractMDataSource } from '../src/index.js';
+import { identifyProjectStructure, analyze, findOrphans, traceMeasureLineage, traceVisualLineage, extractMDataSource } from '../src/index.js';
 
 /**
  * Integration test: load the sample PBIP project and run full analysis.
@@ -160,6 +160,80 @@ describe('analyze (integration)', () => {
     expect(amountRow.sourceTable).toContain('fact_sales');
     expect(amountRow.originalSourceColumn).toBe('sale_amount');
     expect(amountRow.renamed).toBe(true);
+  });
+});
+
+describe('traceVisualLineage – calculation groups', () => {
+  let graph;
+
+  beforeAll(() => {
+    const sampleRoot = join(__dirname, '../../../public/sample-pbip');
+    const modelFiles = readFilesRecursive(join(sampleRoot, 'definition'), '');
+    const reportFiles = readFilesRecursive(join(sampleRoot, 'report/definition'), '');
+    const modelStructure = identifyProjectStructure(modelFiles);
+    const reportStructure = identifyProjectStructure(reportFiles);
+    ({ graph } = analyze({ modelStructure, reportStructure }));
+  });
+
+  it('traceVisualLineage returns a calculationGroups array', () => {
+    // Pick any visual node
+    const anyVisual = [...graph.nodes.values()].find(n => n.type === 'visual');
+    expect(anyVisual).toBeDefined();
+
+    const result = traceVisualLineage(anyVisual.id, graph);
+    expect(result).toBeDefined();
+    expect(Array.isArray(result.calculationGroups)).toBe(true);
+  });
+
+  it('visual referencing TimeCalcGroup has calculationGroups with tableName and items', () => {
+    // visual5 references TimeCalcGroup.Name column
+    const visual5 = [...graph.nodes.values()].find(
+      n => n.type === 'visual' && (n.name === 'visual5' || n.metadata?.title === 'YoY Growth Trend')
+    );
+    expect(visual5).toBeDefined();
+
+    const result = traceVisualLineage(visual5.id, graph);
+    expect(result.calculationGroups.length).toBeGreaterThan(0);
+
+    const tcg = result.calculationGroups.find(cg => cg.tableName === 'TimeCalcGroup');
+    expect(tcg).toBeDefined();
+    expect(tcg.tableName).toBe('TimeCalcGroup');
+    expect(Array.isArray(tcg.items)).toBe(true);
+    expect(tcg.items.length).toBeGreaterThan(0);
+  });
+
+  it('each CG item has name and expression', () => {
+    const visual5 = [...graph.nodes.values()].find(
+      n => n.type === 'visual' && (n.name === 'visual5' || n.metadata?.title === 'YoY Growth Trend')
+    );
+    const result = traceVisualLineage(visual5.id, graph);
+    const tcg = result.calculationGroups.find(cg => cg.tableName === 'TimeCalcGroup');
+
+    for (const item of tcg.items) {
+      expect(item).toHaveProperty('name');
+      expect(item).toHaveProperty('expression');
+      expect(typeof item.name).toBe('string');
+      expect(typeof item.expression).toBe('string');
+      expect(item.name.length).toBeGreaterThan(0);
+      expect(item.expression.length).toBeGreaterThan(0);
+    }
+
+    // Verify specific CG items from TimeCalcGroup
+    const itemNames = tcg.items.map(i => i.name);
+    expect(itemNames).toContain('YTD');
+    expect(itemNames).toContain('QTD');
+    expect(itemNames).toContain('MTD');
+  });
+
+  it('visual without CG reference returns empty calculationGroups array', () => {
+    // visual1 (Sales by Category) does not reference any CG
+    const visual1 = [...graph.nodes.values()].find(
+      n => n.type === 'visual' && (n.name === 'visual1' || n.metadata?.title === 'Sales by Category')
+    );
+    expect(visual1).toBeDefined();
+
+    const result = traceVisualLineage(visual1.id, graph);
+    expect(result.calculationGroups).toEqual([]);
   });
 });
 

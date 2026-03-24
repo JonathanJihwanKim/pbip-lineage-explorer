@@ -8,11 +8,13 @@
       "Version": 2,
       "From": [
         {"Name": "d", "Entity": "DateTable", "Type": 0},
-        {"Name": "s", "Entity": "Sales", "Type": 0}
+        {"Name": "s", "Entity": "Sales", "Type": 0},
+        {"Name": "t", "Entity": "TimeCalcGroup", "Type": 0}
       ],
       "Select": [
         {"Column": {"Expression": {"SourceRef": {"Source": "d"}}, "Property": "Year"}, "Name": "DateTable.Year"},
-        {"Measure": {"Expression": {"SourceRef": {"Source": "s"}}, "Property": "YoY Growth"}, "Name": "Sales.YoY Growth"}
+        {"Measure": {"Expression": {"SourceRef": {"Source": "s"}}, "Property": "YoY Growth"}, "Name": "Sales.YoY Growth"},
+        {"Column": {"Expression": {"SourceRef": {"Source": "t"}}, "Property": "Name"}, "Name": "TimeCalcGroup.Name"}
       ]
     }
   },

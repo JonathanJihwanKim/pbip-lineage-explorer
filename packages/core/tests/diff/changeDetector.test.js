@@ -458,14 +458,14 @@ describe('Calculation group changes', () => {
     const before = new Map([['tables/CG.tmdl', [
       "table 'Time Intelligence'",
       '\tcalculationGroup',
-      "\t\tcalculationItem YTD = DATESYTD('Date'[Date])",
+      "\tcalculationItem YTD = DATESYTD('Date'[Date])",
     ].join('\n')]]);
 
     const after = new Map([['tables/CG.tmdl', [
       "table 'Time Intelligence'",
       '\tcalculationGroup',
-      "\t\tcalculationItem YTD = DATESYTD('Date'[Date])",
-      "\t\tcalculationItem MTD = DATESMTD('Date'[Date])",
+      "\tcalculationItem YTD = DATESYTD('Date'[Date])",
+      "\tcalculationItem MTD = DATESMTD('Date'[Date])",
     ].join('\n')]]);
 
     const result = detectChanges(before, after);

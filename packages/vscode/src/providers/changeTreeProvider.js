@@ -108,6 +108,10 @@ class ChangeTreeProvider {
         visual: 'symbol-misc',
         measure: 'symbol-method',
         bookmark: 'bookmark',
+        column: 'symbol-field',
+        relationship: 'link',
+        source: 'database',
+        expression: 'symbol-variable',
       };
 
       const scopeLabels = {
@@ -116,6 +120,10 @@ class ChangeTreeProvider {
         visual: 'Visual',
         measure: 'Measure',
         bookmark: 'Bookmark',
+        column: 'Column',
+        relationship: 'Relationship',
+        source: 'Source',
+        expression: 'Expression',
       };
 
       return [...groups.entries()].map(([scope, changes]) => {

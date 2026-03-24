@@ -146,10 +146,10 @@ export function parseTableFile(content, fileName) {
         continue;
       }
 
-      // calculationGroup block
+      // calculationGroup block — also scan nested calculationItem children
       if (trimmed === 'calculationGroup') {
         result.calculationGroup = true;
-        result.calculationItems = [];
+        if (!result.calculationItems) result.calculationItems = [];
         const cgIndent = indent;
         let j = i + 1;
         while (j < lines.length) {
@@ -158,19 +158,32 @@ export function parseTableFile(content, fileName) {
           if (!cgTrimmed) { j++; continue; }
           const cgLineIndent = getIndentLevel(cgLine);
           if (cgLineIndent <= cgIndent) break;
-
-          const ciMatch = cgTrimmed.match(/^calculationItem\s+(.+?)\s*=\s*(.*)$/);
-          if (ciMatch) {
-            const ciName = unquoteName(ciMatch[1].trim());
+          const nestedCiMatch = cgTrimmed.match(/^calculationItem\s+(.+?)\s*=\s*(.*)$/);
+          if (nestedCiMatch) {
+            const ciName = unquoteName(nestedCiMatch[1].trim());
             const ciExpr = extractDaxExpression(lines, j);
             result.calculationItems.push({
               name: ciName,
-              expression: ciExpr || ciMatch[2].trim(),
+              expression: ciExpr || nestedCiMatch[2].trim(),
             });
           }
           j++;
         }
         i = j;
+        continue;
+      }
+
+      // calculationItem at same indent level as calculationGroup
+      const ciMatch = trimmed.match(/^calculationItem\s+(.+?)\s*=\s*(.*)$/);
+      if (ciMatch) {
+        if (!result.calculationItems) result.calculationItems = [];
+        const ciName = unquoteName(ciMatch[1].trim());
+        const ciExpr = extractDaxExpression(lines, i);
+        result.calculationItems.push({
+          name: ciName,
+          expression: ciExpr || ciMatch[2].trim(),
+        });
+        i++;
         continue;
       }
     }

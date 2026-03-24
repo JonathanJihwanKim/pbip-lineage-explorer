@@ -76,6 +76,9 @@ export function detectMeasureChanges(beforeFiles, afterFiles) {
   // Detect calculation group item changes
   changes.push(...detectCalcItemChanges(beforeModel.tables, afterModel.tables));
 
+  // Detect column schema changes
+  changes.push(...detectColumnChanges(beforeModel.tables, afterModel.tables));
+
   return changes;
 }
 
@@ -174,6 +177,78 @@ function buildCalcItemMap(tables) {
         name: item.name,
         tableName: table.name,
         expression: item.expression || '',
+      });
+    }
+  }
+  return map;
+}
+
+/**
+ * Detect column schema changes (add/remove/type change) between two table sets.
+ */
+function detectColumnChanges(beforeTables, afterTables) {
+  const changes = [];
+
+  const beforeColumns = buildColumnMap(beforeTables);
+  const afterColumns = buildColumnMap(afterTables);
+
+  for (const [key, col] of afterColumns) {
+    if (!beforeColumns.has(key)) {
+      changes.push(createChange({
+        type: CHANGE_TYPES.COLUMN_ADDED,
+        scope: CHANGE_SCOPES.COLUMN,
+        target: { columnName: col.name, tableName: col.tableName },
+        description: `Column [${col.name}] added to table "${col.tableName}"`,
+        details: { after: { dataType: col.dataType } },
+      }));
+    }
+  }
+
+  for (const [key, col] of beforeColumns) {
+    if (!afterColumns.has(key)) {
+      changes.push(createChange({
+        type: CHANGE_TYPES.COLUMN_REMOVED,
+        scope: CHANGE_SCOPES.COLUMN,
+        target: { columnName: col.name, tableName: col.tableName },
+        description: `Column [${col.name}] removed from table "${col.tableName}"`,
+        details: { before: { dataType: col.dataType } },
+      }));
+    }
+  }
+
+  for (const [key, afterCol] of afterColumns) {
+    const beforeCol = beforeColumns.get(key);
+    if (!beforeCol) continue;
+
+    if (beforeCol.dataType && afterCol.dataType && beforeCol.dataType !== afterCol.dataType) {
+      changes.push(createChange({
+        type: CHANGE_TYPES.COLUMN_TYPE_CHANGED,
+        scope: CHANGE_SCOPES.COLUMN,
+        target: { columnName: afterCol.name, tableName: afterCol.tableName },
+        description: `Column [${afterCol.name}] in "${afterCol.tableName}" data type changed from ${beforeCol.dataType} to ${afterCol.dataType}`,
+        details: {
+          before: { dataType: beforeCol.dataType },
+          after: { dataType: afterCol.dataType },
+        },
+      }));
+    }
+  }
+
+  return changes;
+}
+
+/**
+ * Build a map of tableName.columnName → { name, tableName, dataType }.
+ */
+function buildColumnMap(tables) {
+  const map = new Map();
+  for (const table of tables) {
+    for (const col of (table.columns || [])) {
+      const key = `${table.name}.${col.name}`;
+      map.set(key, {
+        name: col.name,
+        tableName: table.name,
+        dataType: col.dataType || '',
       });
     }
   }

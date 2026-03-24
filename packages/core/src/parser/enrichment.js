@@ -232,5 +232,14 @@ export function applyEnrichments(graph, enrichments) {
     }
   }
 
+  // Also tag columns belonging to CG tables so traceVisualLineage can detect CG via column references
+  for (const node of graph.nodes.values()) {
+    if (node.type === 'column' && node.metadata?.table) {
+      if (cgMap.has(node.metadata.table)) {
+        node.metadata.enrichmentType = ENRICHMENT_TYPES.CALCULATION_GROUP;
+      }
+    }
+  }
+
   return graph;
 }

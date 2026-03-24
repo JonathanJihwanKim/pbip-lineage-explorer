@@ -11,7 +11,9 @@ import { detectReportFilterChanges } from './filterDiff.js';
 import { detectMeasureChanges } from './measureDiff.js';
 import { detectVisualChanges } from './visualDiff.js';
 import { detectBookmarkChanges } from './bookmarkDiff.js';
-import { resolveImpact } from './impactResolver.js';
+import { detectRelationshipChanges } from './relationshipDiff.js';
+import { detectSourceChanges } from './sourceDiff.js';
+import { resolveImpact, resolveCalcItemImpact } from './impactResolver.js';
 import { CHANGE_TYPES } from './changeTypes.js';
 
 /**
@@ -43,10 +45,16 @@ export function detectChanges(beforeFiles, afterFiles, graph = null) {
   // 4. Bookmark changes
   allChanges.push(...detectBookmarkChanges(beforeReport, afterReport));
 
-  // 5. Measure and calculation group changes
+  // 5. Measure, calculation group, and column changes
   allChanges.push(...detectMeasureChanges(beforeModel, afterModel));
 
-  // 6. Resolve impact for measure changes using the lineage graph
+  // 6. Relationship changes
+  allChanges.push(...detectRelationshipChanges(beforeModel, afterModel));
+
+  // 7. Source expression, named expression, and parameter changes
+  allChanges.push(...detectSourceChanges(beforeModel, afterModel));
+
+  // 8. Resolve impact for measure and calc item changes using the lineage graph
   if (graph) {
     for (const change of allChanges) {
       if (change.type === CHANGE_TYPES.MEASURE_CHANGED ||
@@ -55,6 +63,13 @@ export function detectChanges(beforeFiles, afterFiles, graph = null) {
         const { measureName, tableName } = change.target;
         if (measureName && tableName) {
           change.impact = resolveImpact(measureName, tableName, graph);
+        }
+      } else if (change.type === CHANGE_TYPES.CALC_ITEM_CHANGED ||
+                 change.type === CHANGE_TYPES.CALC_ITEM_ADDED ||
+                 change.type === CHANGE_TYPES.CALC_ITEM_REMOVED) {
+        const { calcGroupName } = change.target;
+        if (calcGroupName) {
+          change.impact = resolveCalcItemImpact(calcGroupName, graph);
         }
       }
     }

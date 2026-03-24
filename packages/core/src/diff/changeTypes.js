@@ -24,6 +24,15 @@ export const CHANGE_TYPES = {
   CALC_ITEM_CHANGED: 'calc_item_changed',
   CALC_ITEM_ADDED: 'calc_item_added',
   CALC_ITEM_REMOVED: 'calc_item_removed',
+  COLUMN_ADDED: 'column_added',
+  COLUMN_REMOVED: 'column_removed',
+  COLUMN_TYPE_CHANGED: 'column_type_changed',
+  RELATIONSHIP_ADDED: 'relationship_added',
+  RELATIONSHIP_REMOVED: 'relationship_removed',
+  RELATIONSHIP_CHANGED: 'relationship_changed',
+  SOURCE_EXPRESSION_CHANGED: 'source_expression_changed',
+  EXPRESSION_CHANGED: 'expression_changed',
+  PARAMETER_CHANGED: 'parameter_changed',
 };
 
 export const CHANGE_SCOPES = {
@@ -32,6 +41,10 @@ export const CHANGE_SCOPES = {
   VISUAL: 'visual',
   MEASURE: 'measure',
   BOOKMARK: 'bookmark',
+  COLUMN: 'column',
+  RELATIONSHIP: 'relationship',
+  SOURCE: 'source',
+  EXPRESSION: 'expression',
 };
 
 /**

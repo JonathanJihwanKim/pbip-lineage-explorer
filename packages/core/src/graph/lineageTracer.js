@@ -163,16 +163,25 @@ export function traceVisualLineage(visualNodeId, graph) {
 
   // Also collect FP table IDs that the visual references (directly or via columns)
   const referencedFpTableIds = new Set();
+  const referencedCgTableIds = new Set();
   for (const upId of upNeighbors) {
     const upNode = graph.nodes.get(upId);
     if (!upNode) continue;
-    if (upNode.type === 'table' && upNode.enrichment?.type === 'field_parameter') {
-      referencedFpTableIds.add(upId);
+    if (upNode.type === 'table') {
+      if (upNode.enrichment?.type === 'field_parameter') {
+        referencedFpTableIds.add(upId);
+      }
+      if (upNode.metadata?.enrichmentType === 'calculation_group' || upNode.enrichment?.type === 'calculation_group') {
+        referencedCgTableIds.add(upId);
+      }
     } else if (upNode.type === 'column') {
       const parentTableId = `table::${upNode.metadata?.table || ''}`;
       const parentTable = graph.nodes.get(parentTableId);
       if (parentTable?.enrichment?.type === 'field_parameter') {
         referencedFpTableIds.add(parentTableId);
+      }
+      if (parentTable?.metadata?.enrichmentType === 'calculation_group' || upNode.metadata?.enrichmentType === 'calculation_group') {
+        referencedCgTableIds.add(parentTableId);
       }
     }
   }
@@ -220,6 +229,16 @@ export function traceVisualLineage(visualNodeId, graph) {
       };
     });
 
+  // Build calculation groups info from referenced CG tables
+  const calculationGroups = Array.from(referencedCgTableIds).map(cgTableId => {
+    const cgNode = graph.nodes.get(cgTableId);
+    const items = cgNode?.metadata?.calculationGroup?.items || [];
+    return {
+      tableName: cgNode?.name || cgTableId.replace('table::', ''),
+      items,
+    };
+  });
+
   return {
     visual: {
       id: visualNodeId,
@@ -234,6 +253,7 @@ export function traceVisualLineage(visualNodeId, graph) {
       const n = graph.nodes.get(id);
       return { id, name: n?.name || id, table: n?.metadata?.table || '' };
     }),
+    calculationGroups,
   };
 }
 

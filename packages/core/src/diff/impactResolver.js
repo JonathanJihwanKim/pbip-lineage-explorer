@@ -67,6 +67,68 @@ export function resolveImpact(measureName, tableName, graph) {
 }
 
 /**
+ * Resolve the downstream visual impact of a calculation item change.
+ * Finds visuals that use the calculation group table.
+ *
+ * @param {string} calcGroupName - The calculation group table name.
+ * @param {{ nodes: Map, edges: Array, adjacency: object }} graph - The lineage graph.
+ * @returns {Array<{ type: string, visualId: string, visualName: string, pageId: string, pageName: string, reason: string }>}
+ */
+export function resolveCalcItemImpact(calcGroupName, graph) {
+  if (!graph) return [];
+
+  const impacts = [];
+  const seen = new Set();
+
+  // Find the calculation group table node
+  const tableNodeId = `table::${calcGroupName}`;
+  const tableNode = graph.nodes.get(tableNodeId);
+
+  if (tableNode) {
+    // Find visuals downstream of the CG table
+    const visuals = findDownstreamVisuals(tableNodeId, graph);
+    for (const visual of visuals) {
+      const key = `cg_table:${visual.id}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        impacts.push({
+          type: 'calculation_group',
+          visualId: visual.id,
+          visualName: visual.name || visual.id,
+          pageId: visual.metadata?.pageId || '',
+          pageName: resolvePageNameFromGraph(visual.metadata?.pageId, graph),
+          reason: `uses calculation group "${calcGroupName}"`,
+        });
+      }
+    }
+  }
+
+  // Also check all nodes that reference this CG via enrichment metadata
+  for (const node of graph.nodes.values()) {
+    if (node.metadata?.enrichmentType === ENRICHMENT_TYPES.CALCULATION_GROUP &&
+        (node.name === calcGroupName || node.metadata?.table === calcGroupName)) {
+      const visuals = findDownstreamVisuals(node.id, graph);
+      for (const visual of visuals) {
+        const key = `cg_enrich:${visual.id}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          impacts.push({
+            type: 'calculation_group',
+            visualId: visual.id,
+            visualName: visual.name || visual.id,
+            pageId: visual.metadata?.pageId || '',
+            pageName: resolvePageNameFromGraph(visual.metadata?.pageId, graph),
+            reason: `uses calculation group "${calcGroupName}"`,
+          });
+        }
+      }
+    }
+  }
+
+  return impacts;
+}
+
+/**
  * Find all visuals downstream of a given node via BFS.
  */
 function findDownstreamVisuals(nodeId, graph) {
