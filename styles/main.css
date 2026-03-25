@@ -783,14 +783,14 @@ button .icon { margin-right: 4px; }
   display: flex; align-items: center; gap: 4px;
   padding: 5px 10px; border-radius: 4px;
   text-decoration: none; font-size: 13px;
-  color: #ea4aaa; opacity: 0.7;
-  transition: opacity 0.15s, background 0.15s;
-  border: 1px solid transparent;
+  color: #ea4aaa;
+  transition: opacity 0.15s, background 0.15s, transform 0.15s;
+  border: 1px solid rgba(234, 74, 170, 0.25);
 }
 .toolbar-sponsor:hover {
-  opacity: 1;
-  background: rgba(234, 74, 170, 0.1);
-  border-color: rgba(234, 74, 170, 0.3);
+  background: rgba(234, 74, 170, 0.15);
+  border-color: rgba(234, 74, 170, 0.4);
+  transform: scale(1.05);
 }
 .sponsor-heart { font-size: 14px; }
 .sponsor-text { font-size: 12px; font-weight: 600; }
@@ -919,6 +919,22 @@ button .icon { margin-right: 4px; }
 }
 .sponsor-pill-star:hover { background: rgba(255, 215, 64, 0.25); }
 
+/* Primary sponsor pill (GitHub Sponsors on welcome screen) */
+.sponsor-pill-primary {
+  padding: 9px 22px;
+  font-size: 13px;
+  box-shadow: 0 0 12px rgba(234, 74, 170, 0.3);
+}
+.sponsor-pill-primary:hover {
+  box-shadow: 0 0 18px rgba(234, 74, 170, 0.4);
+}
+
+/* GitHub iframe sponsor button */
+.welcome-sponsor-iframe {
+  margin-top: 10px;
+  text-align: center;
+}
+
 /* --- Drop Zone --- */
 .drop-zone-hint {
   margin-top: 16px;
@@ -1041,11 +1057,37 @@ input:focus-visible {
 }
 .sponsor-overlay-cta {
   text-align: center;
-  margin-bottom: 20px;
+  margin-bottom: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
 }
-.sponsor-overlay-cta p {
-  font-size: 14px;
-  color: var(--text-secondary);
+/* Primary CTA button in overlay */
+.sponsor-cta-primary {
+  display: inline-flex; align-items: center; gap: 8px;
+  width: 100%;
+  justify-content: center;
+  padding: 12px 24px;
+  border-radius: 8px;
+  background: #ea4aaa;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 700;
+  text-decoration: none;
+  transition: background 0.15s, transform 0.1s, box-shadow 0.15s;
+  box-shadow: 0 2px 12px rgba(234, 74, 170, 0.3);
+}
+.sponsor-cta-primary:hover {
+  background: #d63f99;
+  transform: scale(1.02);
+  box-shadow: 0 4px 18px rgba(234, 74, 170, 0.4);
+}
+.sponsor-tiers-heading {
+  font-size: 13px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
   margin-bottom: 12px;
 }
 .sponsor-overlay-wall {
@@ -1060,17 +1102,52 @@ input:focus-visible {
 .sponsor-wall-empty {
   font-size: 13px;
   color: var(--text-muted);
+  text-align: center;
 }
 .sponsor-wall-empty a {
   color: #ea4aaa;
   text-decoration: none;
 }
 .sponsor-wall-empty a:hover { text-decoration: underline; }
+.sponsor-wall-empty p { margin-top: 8px; }
+.sponsor-wall-placeholders {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.sponsor-avatar-placeholder {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  background: var(--border-color);
+  opacity: 0.4;
+}
 .sponsor-overlay-footer {
   font-size: 12px;
   color: var(--text-muted);
   text-align: center;
 }
+
+/* --- Sidebar Sponsor Footer --- */
+.sidebar-sponsor-footer {
+  margin-top: auto;
+  padding: 8px 12px;
+  text-align: center;
+  border-top: 1px solid var(--border-color);
+}
+.sidebar-sponsor-footer a {
+  color: #ea4aaa;
+  text-decoration: none;
+  font-size: 11px;
+  font-weight: 600;
+  opacity: 0.7;
+  transition: opacity 0.15s;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.sidebar-sponsor-footer a:hover { opacity: 1; }
+.sidebar-sponsor-footer .sponsor-heart { font-size: 12px; }
 
 /* --- Milestone Celebration --- */
 .value-counter.milestone {
@@ -1292,6 +1369,18 @@ input:focus-visible {
 .toast-icon { color: #ea4aaa; font-size: 16px; }
 .toast-message { color: var(--text-secondary); }
 .toast-message a { color: #ea4aaa; text-decoration: underline; }
+.toast-cta-btn {
+  display: inline-block;
+  background: rgba(234, 74, 170, 0.15);
+  color: #ea4aaa;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-weight: 600;
+  text-decoration: none !important;
+  margin-left: 4px;
+  transition: background 0.15s;
+}
+.toast-cta-btn:hover { background: rgba(234, 74, 170, 0.25); }
 .toast-close {
   background: transparent; border: none;
   color: var(--text-muted); cursor: pointer;

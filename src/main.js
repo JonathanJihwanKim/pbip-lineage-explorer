@@ -177,7 +177,7 @@ function showSponsorToast() {
   const messageEl = document.getElementById('toast-message');
   if (toast && messageEl) {
     const minutesSaved = traceCount * 15;
-    messageEl.innerHTML = `You've traced ${traceCount} dependency chains this session &mdash; that's roughly ${minutesSaved} minutes of manual DAX tracing saved. This tool is free forever. <a href="https://github.com/sponsors/JonathanJihwanKim" target="_blank" rel="noopener">Sponsors keep it that way</a>.`;
+    messageEl.innerHTML = `You saved ~<strong>${minutesSaved} minutes</strong> this session. <a href="https://github.com/sponsors/JonathanJihwanKim" target="_blank" rel="noopener" class="toast-cta-btn">Support on GitHub</a>`;
     toast.classList.remove('hidden');
     sessionStorage.setItem('pbip-toast-shown', '1');
   }
@@ -209,16 +209,16 @@ function updateValueCounter() {
     // Milestone messages at 5 and 10 traces
     let milestoneText = '';
     if (measuresTraced === 5) {
-      milestoneText = ' &mdash; that\'s hours of manual work saved';
+      milestoneText = ' &mdash; want to <a href="https://github.com/sponsors/JonathanJihwanKim" target="_blank" rel="noopener">support the developer</a>?';
       counter.classList.add('milestone');
       setTimeout(() => counter.classList.remove('milestone'), 1000);
     } else if (measuresTraced === 10) {
-      milestoneText = ' &mdash; power user! You\'re saving serious time';
+      milestoneText = ' &mdash; power user! <a href="https://github.com/sponsors/JonathanJihwanKim" target="_blank" rel="noopener">Consider sponsoring</a>';
       counter.classList.add('milestone');
       setTimeout(() => counter.classList.remove('milestone'), 1000);
     }
 
-    counter.innerHTML = `${parts.join(' &middot; ')} in this session${milestoneText} &mdash; <a href="https://github.com/sponsors/JonathanJihwanKim" target="_blank" rel="noopener">free forever</a>`;
+    counter.innerHTML = `${parts.join(' &middot; ')} in this session${milestoneText || " &mdash; <a href=\"https://github.com/sponsors/JonathanJihwanKim\" target=\"_blank\" rel=\"noopener\">support the project</a>"}`;
     counter.classList.remove('hidden');
   }
 }
