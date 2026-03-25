@@ -929,12 +929,6 @@ button .icon { margin-right: 4px; }
   box-shadow: 0 0 18px rgba(234, 74, 170, 0.4);
 }
 
-/* GitHub iframe sponsor button */
-.welcome-sponsor-iframe {
-  margin-top: 10px;
-  text-align: center;
-}
-
 /* --- Drop Zone --- */
 .drop-zone-hint {
   margin-top: 16px;
