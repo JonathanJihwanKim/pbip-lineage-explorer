@@ -164,3 +164,14 @@ Also available as a VS Code extension for developers who work directly in PBIP/T
 If PBIP Lineage Explorer helps your team, please [sponsor the project](https://github.com/sponsors/JonathanJihwanKim) to keep it free and actively maintained.
 
 <a href="https://github.com/sponsors/JonathanJihwanKim"><img src="https://img.shields.io/badge/Sponsor-❤-ea4aaa?style=flat-square" alt="Sponsor" /></a> <a href="https://buymeacoffee.com/jihwankim"><img src="https://img.shields.io/badge/Buy%20Me%20a%20Coffee-☕-orange?style=flat-square" alt="Buy Me a Coffee" /></a>
+
+---
+
+### Who is this for?
+
+- **Enterprise BI architects** tracing data lineage across complex semantic model estates
+- **Power BI developers** refactoring DAX measures and needing to understand upstream/downstream impact
+- **Data governance teams** auditing lineage from visuals to source columns at scale
+- **DevOps engineers** validating changes in CI/CD pipelines before deployment
+
+**Built for:** Power BI | Microsoft Fabric | PBIP | PBIR | TMDL | Data Lineage | DAX | Semantic Models | Impact Analysis | Data Governance
