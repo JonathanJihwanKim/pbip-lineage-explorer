@@ -61,7 +61,7 @@ function extractDaxReferences(expression, currentTable, allNodes) {
   }
 
   // Match unqualified [FieldName] (refers to same table first, then any table)
-  const unqualifiedPattern = /(?<!'[^']*)\[([^\]]+)\]/g;
+  const unqualifiedPattern = /(?<![\w'])\[([^\]]+)\]/g;
   while ((match = unqualifiedPattern.exec(expression)) !== null) {
     const field = match[1].trim();
     // Skip if already captured by qualified pattern

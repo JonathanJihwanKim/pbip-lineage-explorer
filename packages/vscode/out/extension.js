@@ -123,7 +123,7 @@ function parseTableFile(content, fileName) {
       }
       if (trimmed === "calculationGroup") {
         result.calculationGroup = true;
-        result.calculationItems = [];
+        if (!result.calculationItems) result.calculationItems = [];
         const cgIndent = indent;
         let j = i + 1;
         while (j < lines.length) {
@@ -135,18 +135,30 @@ function parseTableFile(content, fileName) {
           }
           const cgLineIndent = getIndentLevel(cgLine);
           if (cgLineIndent <= cgIndent) break;
-          const ciMatch = cgTrimmed.match(/^calculationItem\s+(.+?)\s*=\s*(.*)$/);
-          if (ciMatch) {
-            const ciName = unquoteName(ciMatch[1].trim());
+          const nestedCiMatch = cgTrimmed.match(/^calculationItem\s+(.+?)\s*=\s*(.*)$/);
+          if (nestedCiMatch) {
+            const ciName = unquoteName(nestedCiMatch[1].trim());
             const ciExpr = extractDaxExpression(lines, j);
             result.calculationItems.push({
               name: ciName,
-              expression: ciExpr || ciMatch[2].trim()
+              expression: ciExpr || nestedCiMatch[2].trim()
             });
           }
           j++;
         }
         i = j;
+        continue;
+      }
+      const ciMatch = trimmed.match(/^calculationItem\s+(.+?)\s*=\s*(.*)$/);
+      if (ciMatch) {
+        if (!result.calculationItems) result.calculationItems = [];
+        const ciName = unquoteName(ciMatch[1].trim());
+        const ciExpr = extractDaxExpression(lines, i);
+        result.calculationItems.push({
+          name: ciName,
+          expression: ciExpr || ciMatch[2].trim()
+        });
+        i++;
         continue;
       }
     }
@@ -1254,6 +1266,13 @@ function applyEnrichments(graph2, enrichments2) {
       };
     }
   }
+  for (const node of graph2.nodes.values()) {
+    if (node.type === "column" && node.metadata?.table) {
+      if (cgMap.has(node.metadata.table)) {
+        node.metadata.enrichmentType = ENRICHMENT_TYPES.CALCULATION_GROUP;
+      }
+    }
+  }
   return graph2;
 }
 var init_enrichment = __esm({
@@ -1345,7 +1364,7 @@ function extractDaxReferences(expression, currentTable, allNodes) {
       refs.push(colId);
     }
   }
-  const unqualifiedPattern = /(?<!'[^']*)\[([^\]]+)\]/g;
+  const unqualifiedPattern = /(?<![\w'])\[([^\]]+)\]/g;
   while ((match = unqualifiedPattern.exec(expression)) !== null) {
     const field = match[1].trim();
     const measureId = `measure::${currentTable}.${field}`;
@@ -2043,16 +2062,25 @@ function traceVisualLineage(visualNodeId, graph2) {
     }
   }
   const referencedFpTableIds = /* @__PURE__ */ new Set();
+  const referencedCgTableIds = /* @__PURE__ */ new Set();
   for (const upId of upNeighbors) {
     const upNode = graph2.nodes.get(upId);
     if (!upNode) continue;
-    if (upNode.type === "table" && upNode.enrichment?.type === "field_parameter") {
-      referencedFpTableIds.add(upId);
+    if (upNode.type === "table") {
+      if (upNode.enrichment?.type === "field_parameter") {
+        referencedFpTableIds.add(upId);
+      }
+      if (upNode.metadata?.enrichmentType === "calculation_group" || upNode.enrichment?.type === "calculation_group") {
+        referencedCgTableIds.add(upId);
+      }
     } else if (upNode.type === "column") {
       const parentTableId = `table::${upNode.metadata?.table || ""}`;
       const parentTable = graph2.nodes.get(parentTableId);
       if (parentTable?.enrichment?.type === "field_parameter") {
         referencedFpTableIds.add(parentTableId);
+      }
+      if (parentTable?.metadata?.enrichmentType === "calculation_group" || upNode.metadata?.enrichmentType === "calculation_group") {
+        referencedCgTableIds.add(parentTableId);
       }
     }
   }
@@ -2090,6 +2118,14 @@ function traceVisualLineage(visualNodeId, graph2) {
       lineage: traceMeasureLineage(measureId, graph2)
     };
   });
+  const calculationGroups = Array.from(referencedCgTableIds).map((cgTableId) => {
+    const cgNode = graph2.nodes.get(cgTableId);
+    const items = cgNode?.metadata?.calculationGroup?.items || [];
+    return {
+      tableName: cgNode?.name || cgTableId.replace("table::", ""),
+      items
+    };
+  });
   return {
     visual: {
       id: visualNodeId,
@@ -2103,7 +2139,8 @@ function traceVisualLineage(visualNodeId, graph2) {
     fieldParameterMeasures: Array.from(fieldParamMeasureIds).map((id) => {
       const n = graph2.nodes.get(id);
       return { id, name: n?.name || id, table: n?.metadata?.table || "" };
-    })
+    }),
+    calculationGroups
   };
 }
 function buildMeasureChain(measureNodeId, graph2, visited) {
@@ -2306,14 +2343,27 @@ var init_changeTypes = __esm({
       BOOKMARK_CHANGED: "bookmark_changed",
       CALC_ITEM_CHANGED: "calc_item_changed",
       CALC_ITEM_ADDED: "calc_item_added",
-      CALC_ITEM_REMOVED: "calc_item_removed"
+      CALC_ITEM_REMOVED: "calc_item_removed",
+      COLUMN_ADDED: "column_added",
+      COLUMN_REMOVED: "column_removed",
+      COLUMN_TYPE_CHANGED: "column_type_changed",
+      RELATIONSHIP_ADDED: "relationship_added",
+      RELATIONSHIP_REMOVED: "relationship_removed",
+      RELATIONSHIP_CHANGED: "relationship_changed",
+      SOURCE_EXPRESSION_CHANGED: "source_expression_changed",
+      EXPRESSION_CHANGED: "expression_changed",
+      PARAMETER_CHANGED: "parameter_changed"
     };
     CHANGE_SCOPES = {
       PAGE: "page",
       REPORT: "report",
       VISUAL: "visual",
       MEASURE: "measure",
-      BOOKMARK: "bookmark"
+      BOOKMARK: "bookmark",
+      COLUMN: "column",
+      RELATIONSHIP: "relationship",
+      SOURCE: "source",
+      EXPRESSION: "expression"
     };
   }
 });
@@ -2696,6 +2746,7 @@ function detectMeasureChanges(beforeFiles, afterFiles) {
     }
   }
   changes.push(...detectCalcItemChanges(beforeModel.tables, afterModel.tables));
+  changes.push(...detectColumnChanges(beforeModel.tables, afterModel.tables));
   return changes;
 }
 function detectCalcItemChanges(beforeTables, afterTables) {
@@ -2776,9 +2827,67 @@ function buildCalcItemMap(tables) {
   }
   return map;
 }
+function detectColumnChanges(beforeTables, afterTables) {
+  const changes = [];
+  const beforeColumns = buildColumnMap(beforeTables);
+  const afterColumns = buildColumnMap(afterTables);
+  for (const [key, col] of afterColumns) {
+    if (!beforeColumns.has(key)) {
+      changes.push(createChange({
+        type: CHANGE_TYPES.COLUMN_ADDED,
+        scope: CHANGE_SCOPES.COLUMN,
+        target: { columnName: col.name, tableName: col.tableName },
+        description: `Column [${col.name}] added to table "${col.tableName}"`,
+        details: { after: { dataType: col.dataType } }
+      }));
+    }
+  }
+  for (const [key, col] of beforeColumns) {
+    if (!afterColumns.has(key)) {
+      changes.push(createChange({
+        type: CHANGE_TYPES.COLUMN_REMOVED,
+        scope: CHANGE_SCOPES.COLUMN,
+        target: { columnName: col.name, tableName: col.tableName },
+        description: `Column [${col.name}] removed from table "${col.tableName}"`,
+        details: { before: { dataType: col.dataType } }
+      }));
+    }
+  }
+  for (const [key, afterCol] of afterColumns) {
+    const beforeCol = beforeColumns.get(key);
+    if (!beforeCol) continue;
+    if (beforeCol.dataType && afterCol.dataType && beforeCol.dataType !== afterCol.dataType) {
+      changes.push(createChange({
+        type: CHANGE_TYPES.COLUMN_TYPE_CHANGED,
+        scope: CHANGE_SCOPES.COLUMN,
+        target: { columnName: afterCol.name, tableName: afterCol.tableName },
+        description: `Column [${afterCol.name}] in "${afterCol.tableName}" data type changed from ${beforeCol.dataType} to ${afterCol.dataType}`,
+        details: {
+          before: { dataType: beforeCol.dataType },
+          after: { dataType: afterCol.dataType }
+        }
+      }));
+    }
+  }
+  return changes;
+}
+function buildColumnMap(tables) {
+  const map = /* @__PURE__ */ new Map();
+  for (const table of tables) {
+    for (const col of table.columns || []) {
+      const key = `${table.name}.${col.name}`;
+      map.set(key, {
+        name: col.name,
+        tableName: table.name,
+        dataType: col.dataType || ""
+      });
+    }
+  }
+  return map;
+}
 function normalizeExpression(expr) {
   if (!expr) return "";
-  return expr.replace(/\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "").replace(/\s+/g, " ").trim();
+  return expr.replace(/\s+/g, " ").trim();
 }
 var init_measureDiff = __esm({
   "../core/src/diff/measureDiff.js"() {
@@ -2950,7 +3059,7 @@ function extractFieldsSimple(config) {
 }
 function extractBookmarkRefs(config) {
   const refs = [];
-  const bookmarkPattern = /Bookmark[a-f0-9]{20,}/g;
+  const bookmarkPattern = /Bookmark[a-fA-F0-9]{20,}/g;
   const json = JSON.stringify(config);
   let match;
   while ((match = bookmarkPattern.exec(json)) !== null) {
@@ -3136,6 +3245,215 @@ var init_bookmarkDiff = __esm({
   }
 });
 
+// ../core/src/diff/relationshipDiff.js
+function detectRelationshipChanges(beforeFiles, afterFiles) {
+  const changes = [];
+  const beforeModel = parseModelFromFiles2(beforeFiles);
+  const afterModel = parseModelFromFiles2(afterFiles);
+  if (!beforeModel || !afterModel) return changes;
+  const beforeRels = buildRelationshipMap(beforeModel.relationships || []);
+  const afterRels = buildRelationshipMap(afterModel.relationships || []);
+  for (const [key, rel] of afterRels) {
+    if (!beforeRels.has(key)) {
+      changes.push(createChange({
+        type: CHANGE_TYPES.RELATIONSHIP_ADDED,
+        scope: CHANGE_SCOPES.RELATIONSHIP,
+        target: { fromTable: rel.fromTable, fromColumn: rel.fromColumn, toTable: rel.toTable, toColumn: rel.toColumn },
+        description: `Relationship added: ${rel.fromTable}[${rel.fromColumn}] -> ${rel.toTable}[${rel.toColumn}]`,
+        details: { after: { crossFilter: rel.crossFilter } }
+      }));
+    }
+  }
+  for (const [key, rel] of beforeRels) {
+    if (!afterRels.has(key)) {
+      changes.push(createChange({
+        type: CHANGE_TYPES.RELATIONSHIP_REMOVED,
+        scope: CHANGE_SCOPES.RELATIONSHIP,
+        target: { fromTable: rel.fromTable, fromColumn: rel.fromColumn, toTable: rel.toTable, toColumn: rel.toColumn },
+        description: `Relationship removed: ${rel.fromTable}[${rel.fromColumn}] -> ${rel.toTable}[${rel.toColumn}]`,
+        details: { before: { crossFilter: rel.crossFilter } }
+      }));
+    }
+  }
+  for (const [key, afterRel] of afterRels) {
+    const beforeRel = beforeRels.get(key);
+    if (!beforeRel) continue;
+    if (beforeRel.crossFilter !== afterRel.crossFilter) {
+      changes.push(createChange({
+        type: CHANGE_TYPES.RELATIONSHIP_CHANGED,
+        scope: CHANGE_SCOPES.RELATIONSHIP,
+        target: { fromTable: afterRel.fromTable, fromColumn: afterRel.fromColumn, toTable: afterRel.toTable, toColumn: afterRel.toColumn },
+        description: `Relationship ${afterRel.fromTable}[${afterRel.fromColumn}] -> ${afterRel.toTable}[${afterRel.toColumn}] cross-filter changed from "${beforeRel.crossFilter}" to "${afterRel.crossFilter}"`,
+        details: {
+          before: { crossFilter: beforeRel.crossFilter },
+          after: { crossFilter: afterRel.crossFilter }
+        }
+      }));
+    }
+  }
+  return changes;
+}
+function parseModelFromFiles2(files) {
+  const structure = identifyProjectStructure(files);
+  if (!structure.tmdlFiles || structure.tmdlFiles.length === 0) {
+    if (!structure.relationshipFiles || structure.relationshipFiles.length === 0) return null;
+  }
+  return parseTmdlModel(structure.tmdlFiles || [], structure.relationshipFiles || []);
+}
+function buildRelationshipMap(relationships) {
+  const map = /* @__PURE__ */ new Map();
+  for (const rel of relationships) {
+    const key = `${rel.fromTable}.${rel.fromColumn}->${rel.toTable}.${rel.toColumn}`;
+    map.set(key, rel);
+  }
+  return map;
+}
+var init_relationshipDiff = __esm({
+  "../core/src/diff/relationshipDiff.js"() {
+    init_changeTypes();
+    init_tmdlParser();
+    init_projectStructure();
+  }
+});
+
+// ../core/src/diff/sourceDiff.js
+function detectSourceChanges(beforeFiles, afterFiles) {
+  const changes = [];
+  const beforeStructure = identifyProjectStructure(beforeFiles);
+  const afterStructure = identifyProjectStructure(afterFiles);
+  changes.push(...detectPartitionSourceChanges(beforeStructure, afterStructure));
+  changes.push(...detectExpressionFileChanges(beforeStructure, afterStructure));
+  return changes;
+}
+function detectPartitionSourceChanges(beforeStructure, afterStructure) {
+  const changes = [];
+  const beforeModel = parseModel(beforeStructure);
+  const afterModel = parseModel(afterStructure);
+  if (!beforeModel || !afterModel) return changes;
+  const beforeSources = buildSourceMap(beforeModel.tables);
+  const afterSources = buildSourceMap(afterModel.tables);
+  for (const [key, afterSource] of afterSources) {
+    const beforeSource = beforeSources.get(key);
+    if (!beforeSource) continue;
+    if (beforeSource.sourceExpression && afterSource.sourceExpression) {
+      const beforeNorm = normalizeWhitespace(beforeSource.sourceExpression);
+      const afterNorm = normalizeWhitespace(afterSource.sourceExpression);
+      if (beforeNorm !== afterNorm) {
+        changes.push(createChange({
+          type: CHANGE_TYPES.SOURCE_EXPRESSION_CHANGED,
+          scope: CHANGE_SCOPES.SOURCE,
+          target: { tableName: afterSource.tableName, partitionName: afterSource.partitionName },
+          description: `Source expression changed for partition "${afterSource.partitionName}" in table "${afterSource.tableName}"`,
+          details: {
+            before: { sourceExpression: beforeSource.sourceExpression },
+            after: { sourceExpression: afterSource.sourceExpression }
+          }
+        }));
+      }
+    }
+  }
+  return changes;
+}
+function detectExpressionFileChanges(beforeStructure, afterStructure) {
+  const changes = [];
+  const beforeExprs = buildExpressionMap(beforeStructure.expressionFiles || []);
+  const afterExprs = buildExpressionMap(afterStructure.expressionFiles || []);
+  for (const [name, afterContent] of afterExprs) {
+    const beforeContent = beforeExprs.get(name);
+    if (beforeContent === void 0) continue;
+    if (normalizeWhitespace(beforeContent) !== normalizeWhitespace(afterContent)) {
+      const isParameter = isParameterLike(afterContent);
+      const changeType = isParameter ? CHANGE_TYPES.PARAMETER_CHANGED : CHANGE_TYPES.EXPRESSION_CHANGED;
+      const label = isParameter ? "Parameter" : "Expression";
+      changes.push(createChange({
+        type: changeType,
+        scope: CHANGE_SCOPES.EXPRESSION,
+        target: { expressionName: name },
+        description: `${label} "${name}" changed`,
+        details: {
+          before: { content: beforeContent },
+          after: { content: afterContent }
+        }
+      }));
+    }
+  }
+  return changes;
+}
+function parseModel(structure) {
+  if (!structure.tmdlFiles || structure.tmdlFiles.length === 0) return null;
+  return parseTmdlModel(structure.tmdlFiles, structure.relationshipFiles || []);
+}
+function buildSourceMap(tables) {
+  const map = /* @__PURE__ */ new Map();
+  for (const table of tables) {
+    for (const partition of table.partitions || []) {
+      if (partition.sourceExpression) {
+        const key = `${table.name}.${partition.name}`;
+        map.set(key, {
+          tableName: table.name,
+          partitionName: partition.name,
+          sourceExpression: partition.sourceExpression
+        });
+      }
+    }
+  }
+  return map;
+}
+function buildExpressionMap(expressionFiles) {
+  const map = /* @__PURE__ */ new Map();
+  for (const { content } of expressionFiles) {
+    const lines = content.split("\n");
+    let currentName = null;
+    let currentParts = [];
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const trimmed = line.replace(/\r$/, "").trim();
+      const exprMatch = trimmed.match(/^expression\s+(.+?)\s*=\s*(.*)$/);
+      if (exprMatch) {
+        if (currentName) {
+          map.set(currentName, currentParts.join("\n").trim());
+        }
+        currentName = unquoteName2(exprMatch[1].trim());
+        const rest = exprMatch[2].trim();
+        currentParts = rest ? [rest] : [];
+        continue;
+      }
+      if (currentName) {
+        currentParts.push(line.replace(/\r$/, ""));
+      }
+    }
+    if (currentName) {
+      map.set(currentName, currentParts.join("\n").trim());
+    }
+  }
+  return map;
+}
+function unquoteName2(name) {
+  if (name && name.startsWith("'") && name.endsWith("'")) {
+    return name.slice(1, -1);
+  }
+  return name || "";
+}
+function isParameterLike(content) {
+  if (!content) return false;
+  const trimmed = content.trim();
+  if (/^"[^"]*"(\s*meta\s*\[.*\])?\s*$/.test(trimmed)) return true;
+  if (/^\d+(\.\d+)?\s*(meta\b|$)/i.test(trimmed)) return true;
+  if (/^#(datetime|date)\s*\(/i.test(trimmed)) return true;
+  return false;
+}
+function normalizeWhitespace(str) {
+  if (!str) return "";
+  return str.replace(/\s+/g, " ").trim();
+}
+var init_sourceDiff = __esm({
+  "../core/src/diff/sourceDiff.js"() {
+    init_changeTypes();
+    init_tmdlParser();
+    init_projectStructure();
+  }
+});
+
 // ../core/src/diff/impactResolver.js
 function resolveImpact(measureName, tableName, graph2) {
   if (!graph2) return [];
@@ -3173,6 +3491,50 @@ function resolveImpact(measureName, tableName, graph2) {
     if (!seen.has(key)) {
       seen.add(key);
       impacts.push(impact);
+    }
+  }
+  return impacts;
+}
+function resolveCalcItemImpact(calcGroupName, graph2) {
+  if (!graph2) return [];
+  const impacts = [];
+  const seen = /* @__PURE__ */ new Set();
+  const tableNodeId = `table::${calcGroupName}`;
+  const tableNode = graph2.nodes.get(tableNodeId);
+  if (tableNode) {
+    const visuals = findDownstreamVisuals(tableNodeId, graph2);
+    for (const visual of visuals) {
+      const key = `cg_table:${visual.id}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        impacts.push({
+          type: "calculation_group",
+          visualId: visual.id,
+          visualName: visual.name || visual.id,
+          pageId: visual.metadata?.pageId || "",
+          pageName: resolvePageNameFromGraph(visual.metadata?.pageId, graph2),
+          reason: `uses calculation group "${calcGroupName}"`
+        });
+      }
+    }
+  }
+  for (const node of graph2.nodes.values()) {
+    if (node.metadata?.enrichmentType === ENRICHMENT_TYPES.CALCULATION_GROUP && (node.name === calcGroupName || node.metadata?.table === calcGroupName)) {
+      const visuals = findDownstreamVisuals(node.id, graph2);
+      for (const visual of visuals) {
+        const key = `cg_enrich:${visual.id}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          impacts.push({
+            type: "calculation_group",
+            visualId: visual.id,
+            visualName: visual.name || visual.id,
+            pageId: visual.metadata?.pageId || "",
+            pageName: resolvePageNameFromGraph(visual.metadata?.pageId, graph2),
+            reason: `uses calculation group "${calcGroupName}"`
+          });
+        }
+      }
     }
   }
   return impacts;
@@ -3272,12 +3634,19 @@ function detectChanges(beforeFiles, afterFiles, graph2 = null) {
   allChanges.push(...detectVisualChanges(beforeReport, afterReport));
   allChanges.push(...detectBookmarkChanges(beforeReport, afterReport));
   allChanges.push(...detectMeasureChanges(beforeModel, afterModel));
+  allChanges.push(...detectRelationshipChanges(beforeModel, afterModel));
+  allChanges.push(...detectSourceChanges(beforeModel, afterModel));
   if (graph2) {
     for (const change of allChanges) {
       if (change.type === CHANGE_TYPES.MEASURE_CHANGED || change.type === CHANGE_TYPES.MEASURE_ADDED || change.type === CHANGE_TYPES.MEASURE_REMOVED) {
         const { measureName, tableName } = change.target;
         if (measureName && tableName) {
           change.impact = resolveImpact(measureName, tableName, graph2);
+        }
+      } else if (change.type === CHANGE_TYPES.CALC_ITEM_CHANGED || change.type === CHANGE_TYPES.CALC_ITEM_ADDED || change.type === CHANGE_TYPES.CALC_ITEM_REMOVED) {
+        const { calcGroupName } = change.target;
+        if (calcGroupName) {
+          change.impact = resolveCalcItemImpact(calcGroupName, graph2);
         }
       }
     }
@@ -3327,6 +3696,8 @@ var init_changeDetector = __esm({
     init_measureDiff();
     init_visualDiff();
     init_bookmarkDiff();
+    init_relationshipDiff();
+    init_sourceDiff();
     init_impactResolver();
     init_changeTypes();
   }
@@ -3888,14 +4259,22 @@ var require_changeTreeProvider = __commonJS({
             page: "file-text",
             visual: "symbol-misc",
             measure: "symbol-method",
-            bookmark: "bookmark"
+            bookmark: "bookmark",
+            column: "symbol-field",
+            relationship: "link",
+            source: "database",
+            expression: "symbol-variable"
           };
           const scopeLabels = {
             report: "Report",
             page: "Page",
             visual: "Visual",
             measure: "Measure",
-            bookmark: "Bookmark"
+            bookmark: "Bookmark",
+            column: "Column",
+            relationship: "Relationship",
+            source: "Source",
+            expression: "Expression"
           };
           return [...groups.entries()].map(([scope, changes]) => {
             const item = new vscode2.TreeItem(
