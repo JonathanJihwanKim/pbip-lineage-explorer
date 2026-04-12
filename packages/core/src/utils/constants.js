@@ -72,9 +72,11 @@ export const LAYER_COLORS = {
   visual: '#4caf50',
   measure: '#ff9800',
   subMeasure: '#ffb74d',
+  table: '#4285f4',
   column: '#9c27b0',
   expression: '#795548',
   source: '#607d8b',
+  hub: '#546e7a',
 };
 
 /** Labels for the 6 lineage layers */

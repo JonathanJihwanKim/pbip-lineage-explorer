@@ -1,6 +1,6 @@
 # PBIP Lineage Explorer
 
-**The only free tool that traces Power BI lineage from Visual → Measure → Source Column — including Power Query renames, field parameters, and calculation groups.** Open your PBIP folder and get instant lineage tracing + commit-by-commit change intelligence.
+**The only free tool that answers "where does this data come from?" in seconds — tracing Power BI visuals all the way back to the original source column, before any Power Query renames.**
 
 [![Try Live Demo](https://img.shields.io/badge/Try%20Live%20Demo-▶%20Open%20in%20Browser-28a745?style=for-the-badge&logo=powerbi)](https://jonathanjihwankim.github.io/pbip-lineage-explorer/)
 [![Sponsor](https://img.shields.io/badge/Sponsor-❤%20Support%20This%20Tool-ea4aaa?style=for-the-badge&logo=github-sponsors)](https://github.com/sponsors/JonathanJihwanKim)
@@ -15,22 +15,119 @@
 
 ## The Problem
 
-- You rename a column and 3 reports break. **You have no idea which ones.**
-- You need to trace a KPI back to its source columns. You click through **Power BI Desktop for an hour.**
-- A colleague commits changes to the `.Report` folder — **you have no idea what visuals, filters, or measures changed.**
-- Someone modifies a shared measure — **you don't know which visuals are impacted downstream.**
-- A data engineer asks: "What are the real source tables and columns before Power Query renames?" You open **47 TMDL files** and start copy-pasting.
+### For data engineers working with Power BI developers
+
+- A Power BI developer gives you a dashboard. You need to know: **"What BigQuery/SQL tables and columns feed this visual?"** You trace through 30 TMDL files by hand.
+- You see a column called `customer_id` in the Power BI model. The source column is actually `cust_fk`. **No tool shows you this rename chain** without opening every Power Query step manually.
+- A data engineer asks: **"Which source tables are used in this dashboard?"** The Power BI developer has to dig through the semantic model and piece it together from memory.
+- You need to validate that a source column rename won't silently break a report. **There's no way to check without deploying and hoping.**
+- Someone modifies a shared DAX measure — **you don't know which visuals are impacted downstream.**
 
 **Each of these takes hours. This tool does it in seconds.**
 
 | | Manual | PBIP Lineage Explorer |
 |---|---|---|
-| Visual → measure → source column chain | Copy-paste across dozens of files | **One-click interactive graph** |
-| Impact analysis ("what breaks?") | Not feasible at scale | **One click** |
+| "What source tables feed this visual?" | Trace through 30 TMDL files | **One click → Source Columns section** |
+| Source column before Power Query renames | Open each PQ step manually | **Full rename chain: source → PQ → PBI** |
+| Visual → measure → source column chain | Copy-paste across dozens of files | **Interactive tree: Visual → Table → Column → Source** |
+| Impact analysis ("what breaks?") | Not feasible at scale | **One click — upstream + downstream** |
 | What changed in the last 5 commits? | Diff raw JSON by hand | **Automatic change report with 30+ change types** |
 | Downstream impact of a measure edit | Hope and pray | **Traced through refs, field params & calc groups** |
-| Source column mapping before PQ rename | Spreadsheet archaeology | **Automatic with full rename chain** |
-| Calculation group items & expressions | Open each TMDL file manually | **All items shown with DAX** |
+
+---
+
+## Who Is This For?
+
+### Data Engineers & Power BI Developers working together
+
+This tool directly bridges the gap between the two teams:
+
+**Data engineers get:**
+- A "Source Columns" section right at the top of every visual — showing every source table and column that feeds it, with full rename chains (source name → Power Query name → Power BI name)
+- A flat **Source Map** table (toolbar button) listing every PBI column mapped to its original source column, database, and schema — exportable as CSV
+- **Group by Source** view to see all columns from a given BigQuery dataset, SQL schema, or file source in one block
+- "Source-First View" toggle to see source column mapping before the DAX chain
+
+**Power BI developers get:**
+- DAX dependency tree — interactive D3 graph showing every referenced measure and column with syntax-highlighted DAX
+- Calculation group lineage — see all calculation items (YTD, QTD, MTD) with their DAX expressions
+- Field parameter resolution — see ALL measures a field parameter contains, not just the active one
+- Impact analysis — select any measure to instantly see what breaks if you change it
+- Orphan detection — find measures that no visual references
+- Commit-by-commit change detection with downstream impact tracing
+
+**Team Leads & Governance:**
+- Track changes across commits (measures, columns, relationships, source expressions)
+- Export lineage as CSV/Markdown for documentation
+- Run impact analysis before approving PRs
+- Model Health Dashboard — tables, columns, measures, relationships, data sources at a glance
+
+---
+
+## Quick Start
+
+1. Open **[jonathanjihwankim.github.io/pbip-lineage-explorer](https://jonathanjihwankim.github.io/pbip-lineage-explorer/)**
+2. Click **Open Project Folder** and select your PBIP project root (the folder containing `.SemanticModel` and `.Report` subfolders)
+3. Click any **visual** in the left panel → see every measure, column, and source it uses
+4. Click any **measure** → trace its full DAX dependency chain to source
+
+> Requires **Chrome 86+** or **Edge 86+** ([File System Access API](https://developer.mozilla.org/en-US/docs/Web/API/File_System_API)). Firefox and Safari are not supported.
+
+### Data Engineer Quick Start
+
+1. Open your PBIP project folder
+2. Click **Visuals** tab in the left panel → click any chart or table visual
+3. The **Source Columns — All Measures** section loads immediately, showing every source table/column
+4. Click **By Source** to group by source database/table — see which BigQuery datasets, SQL schemas, or files feed this visual
+5. For the full model mapping: click **Source Map** in the toolbar → search, sort, and export as CSV
+
+### Power BI Developer Quick Start
+
+1. Open your PBIP project folder
+2. Click **Measures** tab → click any measure
+3. See the interactive tree (Visual → Measure → Table → Column → Source)
+4. Click **↗ Impact** next to any measure → see every downstream visual and upstream dependency
+5. Click **Source-First View** toggle to see source columns before DAX (great for reviewing with data engineers)
+
+---
+
+## What You Get
+
+### For Everyone
+
+- **Visual-to-source lineage in one click** — full chain from report visual to original source column, through any number of DAX measures and sub-measures
+- **Interactive D3 tree** — Visual → Measure → Table → Column → Power Query → Source, with zoom/pan and click-to-expand nodes
+- **Export** — SVG, PNG, CSV, Markdown — or copy lineage to clipboard
+
+### For Data Engineers
+
+- **Source Columns section** — appears at the top of every visual's lineage, listing every source table and column that feeds it
+- **Full rename chain tracking** — when a source column is renamed in Power Query, you see `source_name → pq_name → pbi_name` at every level
+- **Group by Source** toggle — view aggregated source columns grouped by source database/table instead of a flat list
+- **Source-First View** — swap section order so source mapping appears before the DAX chain
+- **Source Map view** — flat, searchable, sortable table mapping every PBI column to its source. Filterable by source type. Exportable as CSV
+- **Source node display** — in the tree, source nodes show the source type (BigQuery, SQL, etc.), server, database, schema, and table name
+- **Column rename indicators** — column nodes show `← src: original_name` in amber when a rename happened
+
+### For Power BI Developers
+
+- **DAX dependency tree** — recursive tree of measure dependencies with syntax-highlighted DAX, Copy buttons, and USERELATIONSHIP display
+- **Calculation group lineage** — see all calculation items (YTD, QTD, MTD) with their full DAX expressions
+- **Field parameter resolution** — see ALL measures a field parameter contains, not just the active one
+- **Impact analysis** — click ↗ Impact on any measure to see upstream and downstream dependencies grouped by type
+- **Orphan detection** — find measures that no visual references
+- **Page layout minimap** — see every visual positioned as in Power BI, click to trace lineage
+- **Model Health Dashboard** — tables, columns, measures, relationships, data sources at a glance
+
+### Change Intelligence
+
+- **Commit-by-commit change detection** — see exactly what changed, when, and who is impacted
+- **30+ change types across 8 scopes** — pages, visuals, filters, measures, bookmarks, columns, relationships, and source expressions
+- **Downstream impact tracing** — when a measure changes, see every visual affected through direct refs, field parameters, and calculation groups
+- **Human-readable descriptions** — no raw JSON diffs, just plain-language summaries
+- **Works in browser and VS Code** — same detection engine, both platforms
+
+> Your files never leave your browser. All parsing happens client-side — nothing is uploaded anywhere.
 
 ---
 
@@ -42,7 +139,9 @@ This tool fills a different gap: **instant, client-side, column-level lineage fo
 
 | What makes this tool different | |
 |---|---|
-| **Column-level lineage** | Trace from visual all the way down to the original source column — before Power Query renames |
+| **Column-level lineage with renames** | Trace from visual all the way to the original source column — including Power Query rename chains |
+| **Visual → Table → Column → Source** | The tree now shows Table and Power Query nodes, completing the full chain |
+| **Source grouping by database/table** | View all source columns grouped by their origin — ideal for data engineers reviewing dashboards |
 | **Field parameter resolution** | See ALL measures a field parameter contains, not just the active one |
 | **Calculation group lineage** | See every calculation item with its DAX expression |
 | **100% client-side** | Your files never leave your browser — no upload, no server, no account |
@@ -51,65 +150,11 @@ This tool fills a different gap: **instant, client-side, column-level lineage fo
 
 ---
 
-## Who Is This For?
-
-**Power BI Developers** — Trace DAX dependencies across measures, find orphan measures, understand downstream impact before making changes, see field parameter and calculation group configurations at a glance.
-
-**Data Engineers** — Find the real source tables and columns *before* Power Query renames. Get an aggregated source mapping across all measures on a visual. Switch to Source View to see sources first, DAX second.
-
-**Team Leads & Governance** — Track changes across commits (measures, columns, relationships, source expressions). Export lineage as CSV/Markdown for documentation. Run impact analysis before approving PRs.
-
----
-
-## What You Get
-
-### Lineage Tracking
-
-- **Visual-to-source lineage in one click** — trace any measure or visual through its full dependency chain down to the original source column
-- **DAX dependency tree** — interactive D3 graph showing every referenced measure and column with syntax-highlighted DAX
-- **Calculation group lineage** — see all calculation items (YTD, QTD, MTD, etc.) with their DAX expressions, not just the default selection
-- **Field parameter resolution** — see ALL measures a field parameter contains, not just the active one
-- **Source column mapping** — flat table showing PBI Column → Source Column with full Power Query rename chain tracking
-- **Aggregated source columns** — one table showing every source column across all measures on a visual
-- **DAX View / Source View toggle** — data engineers see sources first, PBI developers see DAX first
-- **Impact analysis** — select any node to instantly see what breaks if you change it
-- **Page layout minimap** — see every visual on a report page positioned as in Power BI, click to trace lineage
-- **Orphan detection** — find measures that no visual references
-- **Model Health Dashboard** — tables, columns, measures, relationships, data sources at a glance
-- **Export** — SVG, PNG, CSV, Markdown, or copy lineage to clipboard (all exports include attribution for organic sharing)
-
-### Change Intelligence
-
-- **Commit-by-commit change detection** — see exactly what changed, when, and who is impacted
-- **30+ change types across 8 scopes** — pages, visuals, filters, measures, bookmarks, columns, relationships, and source expressions
-- **Column schema changes** — detect column add/remove/type changes between commits
-- **Relationship changes** — detect relationship add/remove/property changes
-- **Source expression changes** — detect M query and data source modifications
-- **Calculation item changes** — detect calc group item add/remove/modify with downstream impact
-- **Downstream impact tracing** — when a measure changes, see every visual affected through direct refs, field parameters, and calculation groups
-- **Human-readable descriptions** — no raw JSON diffs, just plain-language summaries
-- **Works in browser and VS Code** — same detection engine, both platforms
-
-> Your files never leave your browser. All parsing happens client-side — nothing is uploaded anywhere.
-
----
-
-## Quick Start
-
-1. Open **[jonathanjihwankim.github.io/pbip-lineage-explorer](https://jonathanjihwankim.github.io/pbip-lineage-explorer/)**
-2. Click **Open Project Folder** and select your PBIP project root (the folder with `.SemanticModel` and `.Report` subfolders)
-3. Click any measure or visual in the sidebar to trace its lineage
-4. Use **Export** buttons to save the lineage graph as SVG/PNG or source mappings as CSV
-
-> Requires **Chrome 86+** or **Edge 86+** ([File System Access API](https://developer.mozilla.org/en-US/docs/Web/API/File_System_API)). Firefox and Safari are not supported.
-
----
-
 ## Support This Project
 
 I build and maintain this tool solo. It's **free forever** — no premium tiers, no paywalls, no ads. Sponsorship funds my development tools and keeps this free for everyone.
 
-If this tool saved you even one hour of manual DAX tracing, that's worth more than the price of a coffee.
+If this tool saved you even one hour of manual DAX tracing or source column hunting, that's worth more than the price of a coffee.
 
 **Funding goal: 0 / 200 EUR per month** `░░░░░░░░░░░░░░░░░░░░ 0%`
 
@@ -139,7 +184,7 @@ Also available as a VS Code extension for developers who work directly in PBIP/T
 - Auto-activates when your workspace contains `.tmdl` files
 - **Sidebar panels**: Measure Explorer, Orphan Measures, Model Stats, **Change History**
 - **CodeLens**: inline "Trace Lineage" links above measure definitions
-- **Change History panel**: auto-scans recent commits, shows changes grouped by commit → scope → detail with impact badges — covers measures, columns, relationships, source expressions, and more
+- **Change History panel**: auto-scans recent commits, shows changes grouped by commit → scope → detail with impact badges
 
 ---
 
@@ -167,11 +212,4 @@ If PBIP Lineage Explorer helps your team, please [sponsor the project](https://g
 
 ---
 
-### Who is this for?
-
-- **Enterprise BI architects** tracing data lineage across complex semantic model estates
-- **Power BI developers** refactoring DAX measures and needing to understand upstream/downstream impact
-- **Data governance teams** auditing lineage from visuals to source columns at scale
-- **DevOps engineers** validating changes in CI/CD pipelines before deployment
-
-**Built for:** Power BI | Microsoft Fabric | PBIP | PBIR | TMDL | Data Lineage | DAX | Semantic Models | Impact Analysis | Data Governance
+**Built for:** Power BI · Microsoft Fabric · PBIP · PBIR · TMDL · Data Lineage · DAX · Semantic Models · Impact Analysis · Data Governance · Data Engineering

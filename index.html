@@ -78,17 +78,33 @@
       <span class="app-title">PBIP Lineage Explorer</span>
     </div>
     <div class="toolbar-right">
-      <button id="btn-model-health" class="toolbar-btn-source-map hidden" title="Model Health Dashboard" aria-label="Model Health Dashboard">
-        <span class="icon" aria-hidden="true">&#128202;</span> Health
+      <button id="btn-model-health" class="toolbar-btn-icon" disabled title="Model Health — overview of tables, columns, measures, relationships, and data sources (load a project first)" aria-label="Model Health Dashboard">
+        <svg class="toolbar-icon" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <rect x="2" y="10" width="3" height="8" rx="1" fill="currentColor"/>
+          <rect x="7" y="6" width="3" height="12" rx="1" fill="currentColor"/>
+          <rect x="12" y="2" width="3" height="16" rx="1" fill="currentColor"/>
+          <rect x="17" y="7" width="3" height="11" rx="1" fill="currentColor" opacity="0.6"/>
+        </svg>
+        <span>Health</span>
       </button>
-      <button id="btn-source-map" class="toolbar-btn-source-map hidden" title="View Source Column Mapping" aria-label="View Source Column Mapping">
-        <span class="icon" aria-hidden="true">&#128203;</span> Source Map
+      <button id="btn-source-map" class="toolbar-btn-icon" disabled title="Source Mapping — flat table showing every PBI column mapped to its original source column and database. Ideal for data engineers." aria-label="Source Column Mapping">
+        <svg class="toolbar-icon" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <rect x="1" y="3" width="18" height="3" rx="1" fill="currentColor"/>
+          <rect x="1" y="8" width="18" height="3" rx="1" fill="currentColor" opacity="0.7"/>
+          <rect x="1" y="13" width="18" height="3" rx="1" fill="currentColor" opacity="0.4"/>
+          <rect x="1" y="18" width="12" height="3" rx="1" fill="currentColor" opacity="0.25"/>
+        </svg>
+        <span>Source Map</span>
       </button>
-      <button id="btn-bulk-export" class="toolbar-btn-source-map hidden" title="Export all measure lineage as CSV" aria-label="Export all lineage">
-        <span class="icon" aria-hidden="true">&#128229;</span> Export All
+      <button id="btn-bulk-export" class="toolbar-btn-icon" disabled title="Export All — export the full source column mapping for every measure as a CSV file for documentation or sharing." aria-label="Export all lineage">
+        <svg class="toolbar-icon" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <path d="M10 2v10m0 0l-3-3m3 3l3-3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M3 14v2a2 2 0 002 2h10a2 2 0 002-2v-2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+        </svg>
+        <span>Export All</span>
       </button>
-      <button id="btn-keyboard-help" class="keyboard-help-btn" title="Keyboard shortcuts (?)" aria-label="Show keyboard shortcuts">?</button>
-      <button id="btn-sponsor-page" class="toolbar-sponsor" title="Sponsors &amp; Support">
+      <button id="btn-keyboard-help" class="keyboard-help-btn" title="Keyboard shortcuts — press ? to toggle" aria-label="Show keyboard shortcuts">?</button>
+      <button id="btn-sponsor-page" class="toolbar-sponsor" title="Sponsors &amp; Support — keep this tool free">
         <span class="sponsor-heart">&#9829;</span>
         <span class="sponsor-text">Sponsor</span>
       </button>
@@ -176,6 +192,40 @@
     <div class="overlay-card welcome-card">
       <h1>PBIP Lineage Explorer</h1>
       <p class="welcome-tagline">Trace lineage from Visual to Source Column — including Power Query renames, field parameters, and calculation groups. Free, open-source, 100% client-side.</p>
+
+      <div class="welcome-quickstart">
+        <h3 class="welcome-quickstart-title">What can you do?</h3>
+        <div class="welcome-quickstart-grid">
+          <div class="welcome-qs-item">
+            <span class="welcome-qs-icon">&#128065;</span>
+            <div>
+              <strong>Click a visual</strong>
+              <span>See every DAX measure it shows, the columns they use, and their original source names — ideal for data engineers.</span>
+            </div>
+          </div>
+          <div class="welcome-qs-item">
+            <span class="welcome-qs-icon">&#128200;</span>
+            <div>
+              <strong>Click a measure</strong>
+              <span>Trace DAX dependencies through sub-measures all the way to source columns, with rename chains.</span>
+            </div>
+          </div>
+          <div class="welcome-qs-item">
+            <span class="welcome-qs-icon">&#128203;</span>
+            <div>
+              <strong>Source Map <span class="welcome-qs-badge">toolbar</span></strong>
+              <span>Flat searchable table: every PBI column mapped to its original source column and database.</span>
+            </div>
+          </div>
+          <div class="welcome-qs-item">
+            <span class="welcome-qs-icon">&#8599;</span>
+            <div>
+              <strong>Impact button</strong>
+              <span>Click Impact on any measure to instantly see every downstream visual and upstream dependency.</span>
+            </div>
+          </div>
+        </div>
+      </div>
 
       <div class="welcome-pillars">
         <div class="welcome-pillar">

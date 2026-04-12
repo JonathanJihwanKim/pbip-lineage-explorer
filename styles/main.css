@@ -414,7 +414,9 @@ button .icon { margin-right: 4px; }
   border-radius: 8px;
   background: rgba(15, 52, 96, 0.3);
   min-height: 120px;
-  overflow: hidden;
+  overflow-x: auto;   /* allow horizontal scroll on very wide trees */
+  overflow-y: auto;   /* allow vertical scroll so tall trees aren't clipped */
+  max-height: 1600px; /* matches MAX_SVG_HEIGHT in lineageTree.js */
 }
 
 .lineage-tree-container:empty {
@@ -795,29 +797,59 @@ button .icon { margin-right: 4px; }
 .sponsor-heart { font-size: 14px; }
 .sponsor-text { font-size: 12px; font-weight: 600; }
 
-/* --- Toolbar Source Map Button --- */
-.toolbar-btn-source-map {
+/* --- Toolbar icon buttons (Health, Source Map, Export All) --- */
+.toolbar-btn-icon {
+  display: flex;
+  align-items: center;
+  gap: 5px;
   background: transparent;
   border: 1px solid var(--border-color);
   color: var(--text-secondary);
   font-size: 12px;
   padding: 4px 10px;
   border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
 }
-.toolbar-btn-source-map:hover {
+.toolbar-btn-icon:hover:not(:disabled) {
   border-color: var(--accent);
   color: var(--text-primary);
 }
-.toolbar-btn-source-map.active {
+.toolbar-btn-icon.active {
   background: var(--accent);
   border-color: var(--accent);
   color: #fff;
 }
+.toolbar-btn-icon:disabled {
+  opacity: 0.38;
+  cursor: default;
+}
+.toolbar-icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+/* Keep old class working for any lingering references */
+.toolbar-btn-source-map {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: transparent;
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.toolbar-btn-source-map:hover { border-color: var(--accent); color: var(--text-primary); }
+.toolbar-btn-source-map.active { background: var(--accent); border-color: var(--accent); color: #fff; }
 .toolbar-btn-source-map.hidden { display: none; }
 
 /* --- Welcome Card Redesign --- */
 .welcome-card {
-  max-width: 660px;
+  max-width: 700px;
 }
 .welcome-tagline {
   font-size: 15px;
@@ -1288,9 +1320,13 @@ input:focus-visible {
   display: flex;
   gap: 4px;
   margin-bottom: 12px;
+  align-items: flex-start;
 }
 .btn-view-toggle {
-  padding: 4px 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 5px 12px;
   border: 1px solid var(--border-color);
   border-radius: 4px;
   background: transparent;
@@ -1298,12 +1334,18 @@ input:focus-visible {
   font-size: 12px;
   cursor: pointer;
   transition: all 0.15s;
+  line-height: 1.3;
 }
 .btn-view-toggle:hover { border-color: var(--accent); color: var(--text-primary); }
 .btn-view-toggle.active {
   background: var(--accent);
   border-color: var(--accent);
   color: #fff;
+}
+.view-toggle-sub {
+  font-size: 10px;
+  opacity: 0.7;
+  margin-top: 1px;
 }
 
 /* --- Calculation Group Items Table --- */
@@ -1817,21 +1859,23 @@ mark {
   padding: 24px 0;
 }
 
-/* Impact button in lineage view */
+/* Impact button in lineage view — increased visibility */
 .btn-impact {
-  background: transparent;
-  border: 1px solid var(--border-color);
-  color: var(--text-muted);
-  padding: 2px 8px;
-  font-size: 10px;
+  background: rgba(66, 133, 244, 0.1);
+  border: 1px solid rgba(66, 133, 244, 0.4);
+  color: #7ab4ff;
+  padding: 2px 9px;
+  font-size: 11px;
   border-radius: 4px;
   cursor: pointer;
-  margin-left: 6px;
+  margin-left: 8px;
+  font-weight: 500;
+  transition: all 0.15s;
 }
 
 .btn-impact:hover {
-  background: var(--bg-input);
-  color: var(--text-primary);
+  background: rgba(66, 133, 244, 0.25);
+  color: #fff;
   border-color: var(--accent);
 }
 
@@ -2362,6 +2406,125 @@ mark {
   border-left: 2px solid rgba(102, 187, 106, 0.4);
 }
 
+/* --- Welcome Quick Start ("What can you do?") --- */
+.welcome-quickstart {
+  background: rgba(66, 133, 244, 0.07);
+  border: 1px solid rgba(66, 133, 244, 0.2);
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  text-align: left;
+}
+.welcome-quickstart-title {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+  margin: 0 0 10px 0;
+}
+.welcome-quickstart-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.welcome-qs-item {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+.welcome-qs-icon {
+  font-size: 16px;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.welcome-qs-item strong {
+  font-size: 12px;
+  color: var(--text-primary);
+  display: block;
+  margin-bottom: 2px;
+}
+.welcome-qs-item span {
+  font-size: 11px;
+  color: var(--text-secondary);
+  display: block;
+  line-height: 1.35;
+}
+.welcome-qs-badge {
+  font-size: 9px;
+  background: rgba(66, 133, 244, 0.2);
+  color: var(--accent);
+  border-radius: 3px;
+  padding: 1px 4px;
+  vertical-align: middle;
+}
+
+/* --- Aggregated Source Section — Flat/Grouped Toggle --- */
+/* Scoped to agg-source-section to avoid disrupting other section headers */
+.agg-source-section > .lineage-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.agg-view-toggle {
+  display: flex;
+  gap: 3px;
+  flex-shrink: 0;
+}
+.btn-agg-view {
+  padding: 2px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+.btn-agg-view:hover { border-color: var(--accent); color: var(--text-primary); }
+.btn-agg-view.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+/* --- Source Group (By Source grouped view) --- */
+.source-group {
+  margin-bottom: 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.source-group-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: rgba(66, 133, 244, 0.06);
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+}
+.source-group-header:hover { background: rgba(66, 133, 244, 0.12); }
+.source-group-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: #607d8b;
+  flex-shrink: 0;
+}
+.source-group-name {
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: var(--font-mono);
+}
+.source-group table {
+  margin: 0;
+  border-radius: 0;
+  border: none;
+}
+
 /* --- Responsive --- */
 @media (max-width: 900px) {
   .sidebar-left { width: 220px; }
@@ -2371,4 +2534,5 @@ mark {
   .welcome-features { grid-template-columns: 1fr; }
   .source-map-container { padding: 16px; }
   .impact-panel { width: 100%; }
+  .welcome-quickstart-grid { grid-template-columns: 1fr; }
 }

@@ -70,10 +70,12 @@ export function renderLineage(lineage, measureName, graph) {
   if (sectionsContainer) {
     const sourceFirst = localStorage.getItem('pbip-lineage-source-first') === 'true';
     let html = '';
-    // View toggle button
+    // View toggle — clarifies section ordering for power users
     html += `<div class="view-toggle-bar">`;
-    html += `<button class="btn-view-toggle${!sourceFirst ? ' active' : ''}" data-view="dax">DAX View</button>`;
-    html += `<button class="btn-view-toggle${sourceFirst ? ' active' : ''}" data-view="source">Source View</button>`;
+    html += `<button class="btn-view-toggle${!sourceFirst ? ' active' : ''}" data-view="dax" title="DAX-First: shows DAX dependency chain before source column mapping">`;
+    html += `DAX-First <span class="view-toggle-sub">Measures → Columns → Source</span></button>`;
+    html += `<button class="btn-view-toggle${sourceFirst ? ' active' : ''}" data-view="source" title="Source-First: shows source column mapping before the DAX chain — ideal for data engineers">`;
+    html += `Source-First <span class="view-toggle-sub">Source → Columns → Measures</span></button>`;
     html += `</div>`;
     if (hasCircular) {
       html += '<div class="circular-warning">Circular reference detected in this dependency chain. Some measures reference each other, which may cause calculation issues.</div>';
@@ -161,11 +163,12 @@ export function renderVisualLineage(visualLineage, graph) {
     html += '</tr></tbody></table></div>';
     html += '</div>';
 
-    // Change history for this visual's page and measures (placed before measure accordions)
-    html += renderVisualChangeHistorySection(visual, allMeasures);
-
-    // Aggregated source columns section (for data engineers)
+    // Aggregated source columns — shown immediately after Visual Details for data engineers
+    // Answers: "What source tables/columns feed this visual?"
     html += renderAggregatedSourceSection(allMeasures);
+
+    // Change history for this visual's page and measures
+    html += renderVisualChangeHistorySection(visual, allMeasures);
 
     // Calculation group indicator (if CG detected)
     const calculationGroups = visualLineage.calculationGroups || [];
@@ -330,8 +333,8 @@ function renderChainNode(chain, depth) {
   if (chain.expression && chain.expression !== '(circular reference)') {
     html += ` <button class="btn-copy-dax" data-dax="${esc(chain.expression)}" title="Copy DAX">&#128203;</button>`;
   }
-  // Impact analysis button
-  html += ` <button class="btn-impact" data-impact-id="${esc(chain.id)}" title="Show impact analysis">Impact</button>`;
+  // Impact analysis button — show upstream/downstream dependencies
+  html += ` <button class="btn-impact" data-impact-id="${esc(chain.id)}" title="Impact Analysis — see every measure, column, and visual that depends on or is used by this measure">&#8599; Impact</button>`;
   html += `</div>`;
 
   if (chain.expression) {
@@ -1015,12 +1018,13 @@ function highlightDax(expression) {
 
 /**
  * Render an aggregated source columns section for visual lineage.
- * Shows all source tables/columns across all measures on the visual in one flat table.
+ * Answers: "What source tables/columns feed this visual?" — primary data engineer view.
+ * Supports Flat view (all rows) and "By Source" grouped view.
  */
 function renderAggregatedSourceSection(allMeasures) {
   if (!allMeasures || allMeasures.length === 0) return '';
 
-  // Collect all source table rows from all measures, deduplicate by sourceColumnFull
+  // Collect all source rows across all measures, deduplicate by sourceColumnFull
   const seen = new Set();
   const rows = [];
   for (const m of allMeasures) {
@@ -1036,15 +1040,28 @@ function renderAggregatedSourceSection(allMeasures) {
   if (rows.length === 0) return '';
 
   const uniqueSources = new Set(rows.filter(r => r.sourceTable).map(r => r.sourceTable));
+  const renamedCount = rows.filter(r => r.renamed).length;
 
-  let html = '<details class="lineage-section lineage-section-collapsible" open>';
-  html += `<summary class="lineage-section-header"><h3>Source Columns (All Measures) <span class="section-summary-count">${rows.length} column${rows.length !== 1 ? 's' : ''} from ${uniqueSources.size} source${uniqueSources.size !== 1 ? 's' : ''}</span></h3></summary>`;
+  let html = '<details class="lineage-section lineage-section-collapsible agg-source-section" open>';
+  html += `<summary class="lineage-section-header">`;
+  html += `<h3>Source Columns — All Measures `;
+  html += `<span class="section-summary-count">${rows.length} column${rows.length !== 1 ? 's' : ''} from ${uniqueSources.size} source${uniqueSources.size !== 1 ? 's' : ''}`;
+  if (renamedCount > 0) html += ` · ${renamedCount} renamed`;
+  html += `</span></h3>`;
+  // View toggle inside summary (stops propagation via JS)
+  html += `<span class="agg-view-toggle" onclick="event.stopPropagation()">`;
+  html += `<button class="btn-agg-view active" data-agg-view="flat" title="Show all columns in one flat table">Flat</button>`;
+  html += `<button class="btn-agg-view" data-agg-view="grouped" title="Group columns by source database/table — clearest for data engineers">By Source</button>`;
+  html += `</span>`;
+  html += `</summary>`;
+
+  // Flat view
+  html += '<div class="agg-source-flat">';
   html += '<div class="trace-table-wrapper"><table class="trace-table">';
-  html += '<thead><tr><th>PBI Column</th><th>Source Table</th><th>Original Source Column</th><th>Rename Chain</th><th>Used By</th></tr></thead>';
+  html += '<thead><tr><th>PBI Column</th><th>Source Table</th><th>Original Source Column</th><th>Rename Chain</th><th>Used By Measure</th></tr></thead>';
   html += '<tbody>';
   for (const row of rows) {
-    const rowClass = row.renamed ? ' class="renamed-row"' : '';
-    html += `<tr${rowClass}>`;
+    html += `<tr${row.renamed ? ' class="renamed-row"' : ''}>`;
     html += `<td>${esc(row.pbiTable)}[${esc(row.pbiColumn)}]</td>`;
     html += `<td>${esc(row.sourceTable || '')}</td>`;
     html += `<td>${esc(row.originalSourceColumn || row.sourceColumn || '')}</td>`;
@@ -1057,6 +1074,45 @@ function renderAggregatedSourceSection(allMeasures) {
     html += '</tr>';
   }
   html += '</tbody></table></div>';
+  html += '</div>';
+
+  // Grouped-by-source view (hidden initially)
+  html += '<div class="agg-source-grouped hidden">';
+  const groups = new Map();
+  for (const row of rows) {
+    const key = row.sourceTable || '(source unknown)';
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(row);
+  }
+  for (const [sourceName, groupRows] of groups) {
+    const mode = groupRows[0]?.mode || '';
+    html += `<details class="source-group" open>`;
+    html += `<summary class="source-group-header">`;
+    html += `<span class="source-group-dot"></span>`;
+    html += `<strong class="source-group-name">${esc(sourceName)}</strong>`;
+    if (mode) html += ` ${renderModeBadge(mode)}`;
+    html += ` <span class="section-summary-count">${groupRows.length} column${groupRows.length !== 1 ? 's' : ''}</span>`;
+    html += `</summary>`;
+    html += '<div class="trace-table-wrapper"><table class="trace-table">';
+    html += '<thead><tr><th>PBI Column</th><th>Original Source Column</th><th>Rename Chain</th><th>Used By Measure</th></tr></thead>';
+    html += '<tbody>';
+    for (const row of groupRows) {
+      html += `<tr${row.renamed ? ' class="renamed-row"' : ''}>`;
+      html += `<td>${esc(row.pbiTable)}[${esc(row.pbiColumn)}]</td>`;
+      html += `<td>${esc(row.originalSourceColumn || row.sourceColumn || '')}</td>`;
+      if (row.renamed && row.renameChain) {
+        html += `<td class="rename-chain-cell">${esc(row.renameChain.sourceName)} <span class="rename-arrow">→</span> ${esc(row.renameChain.pqName)} <span class="rename-arrow">→</span> ${esc(row.renameChain.pbiName)}</td>`;
+      } else {
+        html += '<td></td>';
+      }
+      html += `<td>${esc(row.fromMeasure)}</td>`;
+      html += '</tr>';
+    }
+    html += '</tbody></table></div>';
+    html += '</details>';
+  }
+  html += '</div>';
+
   html += '</details>';
   return html;
 }
@@ -1064,6 +1120,27 @@ function renderAggregatedSourceSection(allMeasures) {
 // --- Helpers ---
 
 function bindClickHandlers(container) {
+  // Aggregated source view toggle (Flat / By Source)
+  container.querySelectorAll('.btn-agg-view').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const view = btn.dataset.aggView;
+      const section = btn.closest('.agg-source-section');
+      if (!section) return;
+      section.querySelectorAll('.btn-agg-view').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const flat = section.querySelector('.agg-source-flat');
+      const grouped = section.querySelector('.agg-source-grouped');
+      if (view === 'grouped') {
+        flat?.classList.add('hidden');
+        grouped?.classList.remove('hidden');
+      } else {
+        flat?.classList.remove('hidden');
+        grouped?.classList.add('hidden');
+      }
+    });
+  });
+
   // Measure navigation
   container.querySelectorAll('.clickable[data-id]').forEach(el => {
     el.addEventListener('click', () => {

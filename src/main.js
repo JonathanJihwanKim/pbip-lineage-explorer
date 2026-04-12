@@ -496,13 +496,22 @@ async function loadProjectResult(projectResult) {
   populateVisuals(graph);
   populateSourceMapping(graph);
 
-  // Show toolbar buttons
+  // Enable toolbar buttons (they are always visible but disabled until a project loads)
   const btnSourceMap = document.getElementById('btn-source-map');
-  if (btnSourceMap) btnSourceMap.classList.remove('hidden');
+  if (btnSourceMap) {
+    btnSourceMap.disabled = false;
+    btnSourceMap.title = 'Source Mapping — flat table showing every PBI column mapped to its original source column and database. Ideal for data engineers.';
+  }
   const btnModelHealth = document.getElementById('btn-model-health');
-  if (btnModelHealth) btnModelHealth.classList.remove('hidden');
+  if (btnModelHealth) {
+    btnModelHealth.disabled = false;
+    btnModelHealth.title = 'Model Health — overview of tables, columns, measures, relationships, and data sources.';
+  }
   const btnBulkExportShow = document.getElementById('btn-bulk-export');
-  if (btnBulkExportShow) btnBulkExportShow.classList.remove('hidden');
+  if (btnBulkExportShow) {
+    btnBulkExportShow.disabled = false;
+    btnBulkExportShow.title = 'Export All — export the full source column mapping for every measure as a CSV file.';
+  }
 
   // Show orphan filter
   const filterRow = document.getElementById('measure-filter-row');
