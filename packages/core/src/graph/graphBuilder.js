@@ -44,12 +44,12 @@ function extractDaxReferences(expression, currentTable, allNodes) {
 
   const refs = [];
 
-  // Match 'TableName'[ColumnOrMeasure] or TableName[ColumnOrMeasure]
-  const qualifiedPattern = /'?([^'[\]]+)'?\[([^\]]+)\]/g;
+  // Match 'Table Name'[Field] (quoted) or TableName[Field] (bare identifier, no word-char/dot before it)
+  const qualifiedPattern = /'([^']+)'\[([^\]]+)\]|(?<![\w.])(\w+(?:\s+\w+)*)\[([^\]]+)\]/g;
   let match;
   while ((match = qualifiedPattern.exec(expression)) !== null) {
-    const table = match[1].trim();
-    const field = match[2].trim();
+    const table = (match[1] || match[3]).trim();
+    const field = (match[2] || match[4]).trim();
     // Could be a column or measure
     const colId = `column::${table}.${field}`;
     const measureId = `measure::${table}.${field}`;
@@ -72,14 +72,15 @@ function extractDaxReferences(expression, currentTable, allNodes) {
     } else if (allNodes.has(colId) && !refs.includes(colId)) {
       refs.push(colId);
     } else {
-      // Search ALL tables for a matching measure (DAX allows cross-table unqualified refs)
+      // Search ALL tables for matching measures (DAX allows cross-table unqualified refs).
+      // Link every candidate — if a short name is ambiguous across tables, the user
+      // should see the ambiguity in the lineage tree, not have branches silently dropped.
       let found = false;
       for (const [nodeId, node] of allNodes) {
         if (node.type === 'measure' && node.name === field && nodeId !== `measure::${currentTable}.${field}`) {
           if (!refs.includes(nodeId)) {
             refs.push(nodeId);
             found = true;
-            break;
           }
         }
       }
@@ -89,7 +90,6 @@ function extractDaxReferences(expression, currentTable, allNodes) {
           if (node.type === 'column' && node.name === field && nodeId !== `column::${currentTable}.${field}`) {
             if (!refs.includes(nodeId)) {
               refs.push(nodeId);
-              break;
             }
           }
         }

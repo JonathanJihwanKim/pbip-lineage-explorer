@@ -2,14 +2,48 @@
 
 **The only free tool that answers "where does this data come from?" in seconds — tracing Power BI visuals all the way back to the original source column, before any Power Query renames.**
 
+- 🔍 **Trace any Power BI visual → measure → column → source** in one click
+- 🔒 **100% in your browser** — files never uploaded, no account, no server
+- ⚡ **Works on TMDL/PBIR** — the format Power BI Desktop now saves by default
+
 [![Try Live Demo](https://img.shields.io/badge/Try%20Live%20Demo-▶%20Open%20in%20Browser-28a745?style=for-the-badge&logo=powerbi)](https://jonathanjihwankim.github.io/pbip-lineage-explorer/)
 [![Sponsor](https://img.shields.io/badge/Sponsor-❤%20Support%20This%20Tool-ea4aaa?style=for-the-badge&logo=github-sponsors)](https://github.com/sponsors/JonathanJihwanKim)
 
 ![GitHub stars](https://img.shields.io/github/stars/JonathanJihwanKim/pbip-lineage-explorer?style=flat) Built by a **Microsoft MVP** · Free forever · 100% client-side · Your files never leave your browser · [MIT License](LICENSE)
 
 ![PBIP Lineage Explorer Screenshot](docs/screenshot.png)
+*Click a visual → see the full chain from visual to BigQuery source column, including Power Query renames.*
 
 > **No PBIP file?** [Try it now with built-in sample data](https://jonathanjihwankim.github.io/pbip-lineage-explorer/) — no setup required.
+
+---
+
+## Quick Start
+
+1. Open **[jonathanjihwankim.github.io/pbip-lineage-explorer](https://jonathanjihwankim.github.io/pbip-lineage-explorer/)**
+2. Click **Open Project Folder** and select your PBIP project root (the folder containing `.SemanticModel` and `.Report` subfolders)
+3. Click any **visual** in the left panel → see every measure, column, and source it uses
+4. Click any **measure** → trace its full DAX dependency chain to source
+
+> Requires **Chrome 86+** or **Edge 86+** ([File System Access API](https://developer.mozilla.org/en-US/docs/Web/API/File_System_API)). Firefox and Safari are not supported.
+
+### Data Engineer Quick Start
+
+1. Open your PBIP project folder
+2. Click **Visuals** tab in the left panel → click any chart or table visual
+3. The **Source Columns — All Measures** section loads immediately, showing every source table/column
+4. Click **By Source** to group by source database/table — see which BigQuery datasets, SQL schemas, or files feed this visual
+5. For the full model mapping: click **Source Map** in the toolbar → search, sort, and export as CSV
+
+### Power BI Developer Quick Start
+
+1. Open your PBIP project folder
+2. Click **Measures** tab → click any measure
+3. See the interactive tree (Visual → Measure → Table → Column → Source)
+4. Click **↗ Impact** next to any measure → see every downstream visual and upstream dependency
+5. Click **Source-First View** toggle to see source columns before DAX (great for reviewing with data engineers)
+
+> *Saved you an hour? A [coffee-sized sponsorship](https://github.com/sponsors/JonathanJihwanKim) keeps this free for everyone.*
 
 ---
 
@@ -64,33 +98,6 @@ This tool directly bridges the gap between the two teams:
 
 ---
 
-## Quick Start
-
-1. Open **[jonathanjihwankim.github.io/pbip-lineage-explorer](https://jonathanjihwankim.github.io/pbip-lineage-explorer/)**
-2. Click **Open Project Folder** and select your PBIP project root (the folder containing `.SemanticModel` and `.Report` subfolders)
-3. Click any **visual** in the left panel → see every measure, column, and source it uses
-4. Click any **measure** → trace its full DAX dependency chain to source
-
-> Requires **Chrome 86+** or **Edge 86+** ([File System Access API](https://developer.mozilla.org/en-US/docs/Web/API/File_System_API)). Firefox and Safari are not supported.
-
-### Data Engineer Quick Start
-
-1. Open your PBIP project folder
-2. Click **Visuals** tab in the left panel → click any chart or table visual
-3. The **Source Columns — All Measures** section loads immediately, showing every source table/column
-4. Click **By Source** to group by source database/table — see which BigQuery datasets, SQL schemas, or files feed this visual
-5. For the full model mapping: click **Source Map** in the toolbar → search, sort, and export as CSV
-
-### Power BI Developer Quick Start
-
-1. Open your PBIP project folder
-2. Click **Measures** tab → click any measure
-3. See the interactive tree (Visual → Measure → Table → Column → Source)
-4. Click **↗ Impact** next to any measure → see every downstream visual and upstream dependency
-5. Click **Source-First View** toggle to see source columns before DAX (great for reviewing with data engineers)
-
----
-
 ## What You Get
 
 ### For Everyone
@@ -129,6 +136,8 @@ This tool directly bridges the gap between the two teams:
 
 > Your files never leave your browser. All parsing happens client-side — nothing is uploaded anywhere.
 
+> *Every feature above is free. If your team relies on this tool, [sponsor its development](https://github.com/sponsors/JonathanJihwanKim) — even one-time support helps.*
+
 ---
 
 ## Why This Tool?
@@ -150,13 +159,35 @@ This tool fills a different gap: **instant, client-side, column-level lineage fo
 
 ---
 
+## FAQ
+
+**Is my data really safe?**
+Yes. Nothing leaves your browser. All parsing happens locally in JavaScript. The full source code is MIT-licensed and auditable on GitHub.
+
+**Do I need to install anything?**
+No. It runs directly in Chrome 86+ or Edge 86+ — just open the URL. A VS Code extension is also available if you prefer to work inside your editor.
+
+**What if my PBIP uses calculation groups, field parameters, or custom connectors?**
+All supported. Calculation group lineage, field parameter resolution, and source column tracing are built into the core engine.
+
+**Can I use this at work on proprietary reports?**
+Yes. MIT license — use it freely. No telemetry, no network requests, no account. Your files never leave the browser.
+
+---
+
 ## Support This Project
 
-I build and maintain this tool solo. It's **free forever** — no premium tiers, no paywalls, no ads. Sponsorship funds my development tools and keeps this free for everyone.
+I build and maintain this tool solo. It's **free forever** — no premium tiers, no paywalls, no ads.
 
-If this tool saved you even one hour of manual DAX tracing or source column hunting, that's worth more than the price of a coffee.
+**Goal: 200 EUR/month** to make this a funded side-project. Every tier below helps get there.
 
-**Funding goal: 0 / 200 EUR per month** `░░░░░░░░░░░░░░░░░░░░ 0%`
+**Why sponsor?**
+- Funds 100% of development (solo-maintained, no company backing)
+- Keeps every feature free, forever — no paywalls, ever
+- Directly shapes the roadmap — sponsors get priority on feature requests
+- Your name or company logo visible to a growing Power BI community
+
+> 🎯 The **Expert tier** — 30 minutes monthly with a Microsoft MVP — is the flagship. No other open-source Power BI tool offers direct MVP access at this price.
 
 <a href="https://github.com/sponsors/JonathanJihwanKim"><img src="https://img.shields.io/badge/GitHub%20Sponsors-❤%20Monthly%20from%207%20EUR-ea4aaa?style=for-the-badge" alt="GitHub Sponsors" /></a> <a href="https://buymeacoffee.com/jihwankim"><img src="https://img.shields.io/badge/Buy%20Me%20a%20Coffee-☕%20One--time%20support-orange?style=for-the-badge" alt="Buy Me a Coffee" /></a>
 
@@ -168,11 +199,9 @@ If this tool saved you even one hour of manual DAX tracing or source column hunt
 | **Community** | 7 EUR/mo | Name on README + sponsor badge |
 | **Coffee** | One-time | A personal thank-you + name listed below |
 
-> The **Expert tier** is unique in open source — a monthly 30-minute video call where you can ask a Microsoft MVP anything about Power BI, DAX, TMDL, PBIP, or data modeling. No other tool offers this.
-
 ### Hall of Sponsors
 
-> **Be the first!** Your name, logo, or company will appear right here. [Become a sponsor](https://github.com/sponsors/JonathanJihwanKim) and join the wall.
+> **Be the first!** Your name, logo, or company will appear right here — seen by every Power BI developer who visits. [Become a sponsor](https://github.com/sponsors/JonathanJihwanKim) and join the wall.
 
 ---
 

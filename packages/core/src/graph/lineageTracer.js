@@ -23,7 +23,7 @@ export function traceMeasureLineage(measureNodeId, graph) {
   const impact = analyzeImpact(measureNodeId, graph);
 
   const visuals = traceVisuals(measureNode, impact, graph);
-  const measureChain = buildMeasureChain(measureNodeId, graph, new Set());
+  const measureChain = buildMeasureChain(measureNodeId, graph);
   const sourceTable = buildSourceTable(measureChain, graph);
   const summaryTrees = buildSummaryTrees(measureNode, visuals, measureChain, sourceTable, graph);
 
@@ -260,9 +260,13 @@ export function traceVisualLineage(visualNodeId, graph) {
 /**
  * Section 2: Build the DAX measure dependency chain recursively.
  * Returns a tree: { id, name, table, expression, children: [...], columns: [...] }
+ *
+ * Cycle detection uses a per-path `ancestors` Set (only true cycles are flagged).
+ * A `memo` Map lets shared sub-measures in a DAG reuse a fully computed subtree
+ * instead of being truncated as "circular" on the second visit.
  */
-function buildMeasureChain(measureNodeId, graph, visited) {
-  if (visited.has(measureNodeId)) {
+function buildMeasureChain(measureNodeId, graph, ancestors = new Set(), memo = new Map()) {
+  if (ancestors.has(measureNodeId)) {
     const node = graph.nodes.get(measureNodeId);
     return {
       id: measureNodeId,
@@ -273,10 +277,13 @@ function buildMeasureChain(measureNodeId, graph, visited) {
       columns: [],
     };
   }
-  visited.add(measureNodeId);
+  if (memo.has(measureNodeId)) return memo.get(measureNodeId);
 
   const node = graph.nodes.get(measureNodeId);
   if (!node) return null;
+
+  const nextAncestors = new Set(ancestors);
+  nextAncestors.add(measureNodeId);
 
   const result = {
     id: measureNodeId,
@@ -324,7 +331,7 @@ function buildMeasureChain(measureNodeId, graph, visited) {
     if (!upNode) continue;
 
     if (upNode.type === 'measure') {
-      const child = buildMeasureChain(upId, graph, visited);
+      const child = buildMeasureChain(upId, graph, nextAncestors, memo);
       if (child) result.children.push(child);
     } else if (upNode.type === 'column') {
       result.columns.push({
@@ -342,23 +349,37 @@ function buildMeasureChain(measureNodeId, graph, visited) {
     }
   }
 
+  memo.set(measureNodeId, result);
   return result;
 }
 
 /**
  * Section 3: Build the source lineage table — one row per leaf column.
  * Traces each column to its data source.
+ *
+ * Columns are deduped by node id, but every parent measure that references a
+ * given column is preserved in `row.daxReferences` so the UI can attribute the
+ * column to all measures that use it. `row.daxReference` is kept as a legacy
+ * alias (first parent) for any external consumer.
  */
 function buildSourceTable(measureChain, graph) {
   const rows = [];
-  const seen = new Set();
+  const indexByCol = new Map();
 
-  function collectColumns(chain, parentMeasure) {
+  function collectColumns(chain) {
     if (!chain) return;
 
     for (const col of chain.columns) {
-      if (seen.has(col.id)) continue;
-      seen.add(col.id);
+      const parent = chain.name;
+
+      const existingIdx = indexByCol.get(col.id);
+      if (existingIdx !== undefined) {
+        const existing = rows[existingIdx];
+        if (parent && !existing.daxReferences.includes(parent)) {
+          existing.daxReferences.push(parent);
+        }
+        continue;
+      }
 
       // Find the table node
       const tableNodeId = `table::${col.table}`;
@@ -398,8 +419,11 @@ function buildSourceTable(measureChain, graph) {
       // Determine storage mode (Import/DirectQuery)
       const mode = tableNode?.metadata?.dataSource?.mode || '';
 
+      const daxReferences = parent ? [parent] : [];
+
       rows.push({
-        daxReference: `${parentMeasure || chain.name}`,
+        daxReferences,
+        daxReference: daxReferences[0] || '', // legacy alias (first parent)
         pbiTable: col.table,
         pbiColumn: col.name,
         dataType: col.dataType || '',
@@ -414,14 +438,15 @@ function buildSourceTable(measureChain, graph) {
           : null,
         mode,
       });
+      indexByCol.set(col.id, rows.length - 1);
     }
 
     for (const child of chain.children) {
-      collectColumns(child, chain.name);
+      collectColumns(child);
     }
   }
 
-  collectColumns(measureChain, '');
+  collectColumns(measureChain);
   return rows;
 }
 

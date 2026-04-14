@@ -1,7 +1,19 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { readFileSync, readdirSync, statSync } from 'fs';
 import { join } from 'path';
-import { identifyProjectStructure, analyze, findOrphans, traceMeasureLineage, traceVisualLineage, extractMDataSource } from '../src/index.js';
+import {
+  identifyProjectStructure,
+  analyze,
+  findOrphans,
+  traceMeasureLineage,
+  traceVisualLineage,
+  extractMDataSource,
+  createNode,
+  createEdge,
+  buildAdjacency,
+  NODE_TYPES,
+  EDGE_TYPES,
+} from '../src/index.js';
 
 /**
  * Integration test: load the sample PBIP project and run full analysis.
@@ -234,6 +246,137 @@ describe('traceVisualLineage – calculation groups', () => {
 
     const result = traceVisualLineage(visual1.id, graph);
     expect(result.calculationGroups).toEqual([]);
+  });
+});
+
+describe('traceMeasureLineage – DAG traversal & multi-parent attribution', () => {
+  // Build a minimal in-memory graph that exercises:
+  //   - A DAG where two parent measures share a sub-measure (memo path)
+  //   - A measure chain with distinct leaf columns under different branches
+  //   - A column referenced by multiple parent measures (daxReferences array)
+  //
+  //   Root ──> A ──┐
+  //        ──> B ──┴──> Shared ──> Data[X]
+  //        ──> C ─────────────────> Data[Y]
+  //        ──> D ─────────────────> Data[Z]
+  function buildDagGraph() {
+    const nodes = new Map();
+    const edges = [];
+
+    // Table + columns
+    nodes.set('table::Data', createNode('table::Data', 'Data', NODE_TYPES.TABLE, {}));
+    for (const c of ['X', 'Y', 'Z']) {
+      nodes.set(`column::Data.${c}`, createNode(`column::Data.${c}`, c, NODE_TYPES.COLUMN, {
+        table: 'Data',
+        sourceColumn: c.toLowerCase(),
+        sourceTableFull: `db.Data.${c.toLowerCase()}`,
+        sourceTablePath: 'db.Data',
+      }));
+    }
+
+    // Measures
+    for (const m of ['Root', 'A', 'B', 'C', 'D', 'Shared']) {
+      nodes.set(`measure::Data.${m}`, createNode(`measure::Data.${m}`, m, NODE_TYPES.MEASURE, {
+        table: 'Data',
+        expression: `[${m}] dummy expression`,
+      }));
+    }
+
+    // Edges: Root -> A, B, C, D
+    for (const child of ['A', 'B', 'C', 'D']) {
+      edges.push(createEdge('measure::Data.Root', `measure::Data.${child}`, EDGE_TYPES.MEASURE_TO_MEASURE));
+    }
+    // A -> Shared, B -> Shared (DAG)
+    edges.push(createEdge('measure::Data.A', 'measure::Data.Shared', EDGE_TYPES.MEASURE_TO_MEASURE));
+    edges.push(createEdge('measure::Data.B', 'measure::Data.Shared', EDGE_TYPES.MEASURE_TO_MEASURE));
+    // Shared -> X, C -> Y, D -> Z
+    edges.push(createEdge('measure::Data.Shared', 'column::Data.X', EDGE_TYPES.MEASURE_TO_COLUMN));
+    edges.push(createEdge('measure::Data.C', 'column::Data.Y', EDGE_TYPES.MEASURE_TO_COLUMN));
+    edges.push(createEdge('measure::Data.D', 'column::Data.Z', EDGE_TYPES.MEASURE_TO_COLUMN));
+
+    const adjacency = buildAdjacency(edges);
+    return { nodes, edges, adjacency };
+  }
+
+  it('collects source columns reachable from ALL referenced measures (not just the first branch)', () => {
+    const graph = buildDagGraph();
+    const lineage = traceMeasureLineage('measure::Data.Root', graph);
+
+    expect(lineage).not.toBeNull();
+    const pbiCols = lineage.sourceTable.map(r => r.pbiColumn).sort();
+    // All three leaf columns must appear, regardless of branch order.
+    expect(pbiCols).toEqual(['X', 'Y', 'Z']);
+  });
+
+  it('preserves every parent measure that references a shared column in daxReferences', () => {
+    const graph = buildDagGraph();
+    const lineage = traceMeasureLineage('measure::Data.Root', graph);
+
+    const xRow = lineage.sourceTable.find(r => r.pbiColumn === 'X');
+    expect(xRow).toBeDefined();
+    // X is referenced by measure `Shared`, which is reached via both A and B.
+    // buildSourceTable attributes columns to their immediate parent in the chain,
+    // so `Shared` should appear. Because Shared's memoized subtree is reused when
+    // visited via B, the direct parent for X is always `Shared` — but the
+    // row must carry at least one ancestor, and the array form must be present.
+    expect(Array.isArray(xRow.daxReferences)).toBe(true);
+    expect(xRow.daxReferences.length).toBeGreaterThan(0);
+    expect(xRow.daxReferences).toContain('Shared');
+    // Legacy alias still populated for any old consumer.
+    expect(xRow.daxReference).toBe(xRow.daxReferences[0]);
+  });
+
+  it('merges multiple direct parents into a single row when they reference the same column', () => {
+    // Direct-parent case: Root itself references column Q, AND child measure E also references Q.
+    // Here A shares a column with the root via two paths with different direct parents.
+    const nodes = new Map();
+    const edges = [];
+    nodes.set('table::T', createNode('table::T', 'T', NODE_TYPES.TABLE, {}));
+    nodes.set('column::T.Q', createNode('column::T.Q', 'Q', NODE_TYPES.COLUMN, {
+      table: 'T', sourceColumn: 'q', sourceTableFull: 'db.T.q', sourceTablePath: 'db.T',
+    }));
+    for (const m of ['Top', 'M1', 'M2']) {
+      nodes.set(`measure::T.${m}`, createNode(`measure::T.${m}`, m, NODE_TYPES.MEASURE, { table: 'T', expression: '' }));
+    }
+    edges.push(createEdge('measure::T.Top', 'measure::T.M1', EDGE_TYPES.MEASURE_TO_MEASURE));
+    edges.push(createEdge('measure::T.Top', 'measure::T.M2', EDGE_TYPES.MEASURE_TO_MEASURE));
+    edges.push(createEdge('measure::T.M1', 'column::T.Q', EDGE_TYPES.MEASURE_TO_COLUMN));
+    edges.push(createEdge('measure::T.M2', 'column::T.Q', EDGE_TYPES.MEASURE_TO_COLUMN));
+
+    const graph = { nodes, edges, adjacency: buildAdjacency(edges) };
+    const lineage = traceMeasureLineage('measure::T.Top', graph);
+
+    expect(lineage.sourceTable.length).toBe(1);
+    const qRow = lineage.sourceTable[0];
+    expect(qRow.pbiColumn).toBe('Q');
+    // Both M1 and M2 reference Q — both must be captured in daxReferences.
+    expect(qRow.daxReferences.sort()).toEqual(['M1', 'M2']);
+  });
+
+  it('flags true cycles without losing unrelated branches', () => {
+    const nodes = new Map();
+    const edges = [];
+    nodes.set('table::T', createNode('table::T', 'T', NODE_TYPES.TABLE, {}));
+    nodes.set('column::T.K', createNode('column::T.K', 'K', NODE_TYPES.COLUMN, {
+      table: 'T', sourceColumn: 'k', sourceTableFull: 'db.T.k', sourceTablePath: 'db.T',
+    }));
+    for (const m of ['Cy1', 'Cy2', 'Leaf']) {
+      nodes.set(`measure::T.${m}`, createNode(`measure::T.${m}`, m, NODE_TYPES.MEASURE, { table: 'T', expression: '' }));
+    }
+    // Real cycle: Cy1 -> Cy2 -> Cy1
+    edges.push(createEdge('measure::T.Cy1', 'measure::T.Cy2', EDGE_TYPES.MEASURE_TO_MEASURE));
+    edges.push(createEdge('measure::T.Cy2', 'measure::T.Cy1', EDGE_TYPES.MEASURE_TO_MEASURE));
+    // Unrelated branch Cy1 -> Leaf -> K
+    edges.push(createEdge('measure::T.Cy1', 'measure::T.Leaf', EDGE_TYPES.MEASURE_TO_MEASURE));
+    edges.push(createEdge('measure::T.Leaf', 'column::T.K', EDGE_TYPES.MEASURE_TO_COLUMN));
+
+    const graph = { nodes, edges, adjacency: buildAdjacency(edges) };
+    const lineage = traceMeasureLineage('measure::T.Cy1', graph);
+
+    // The real cycle is reported as "(circular reference)" but the Leaf branch must still yield column K.
+    const kRow = lineage.sourceTable.find(r => r.pbiColumn === 'K');
+    expect(kRow).toBeDefined();
+    expect(kRow.sourceColumn).toBe('k');
   });
 });
 

@@ -453,7 +453,10 @@ function renderSourceTableSection(sourceTable) {
   for (const row of sourceTable) {
     const rowClass = row.renamed ? ' class="renamed-row"' : '';
     html += `<tr${rowClass}>`;
-    html += `<td>${esc(row.daxReference)}</td>`;
+    const daxRefs = row.daxReferences && row.daxReferences.length > 0
+      ? row.daxReferences.join(', ')
+      : (row.daxReference || '');
+    html += `<td>${esc(daxRefs)}</td>`;
     html += `<td>${esc(row.pbiTable)}</td>`;
     html += `<td>${esc(row.pbiColumn)}${row.isHidden ? ' <span class="hidden-indicator" title="Hidden from report view">&#128065;&#8211;</span>' : ''}</td>`;
     html += `<td>${renderDataTypeBadge(row.dataType)}</td>`;
