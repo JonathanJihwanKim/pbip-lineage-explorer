@@ -2472,6 +2472,12 @@ mark {
   display: flex;
   gap: 3px;
   flex-shrink: 0;
+  align-items: center;
+}
+.agg-view-label {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-right: 2px;
 }
 .btn-agg-view {
   padding: 2px 8px;

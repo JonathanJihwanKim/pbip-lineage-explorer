@@ -32,7 +32,7 @@
 1. Open your PBIP project folder
 2. Click **Visuals** tab in the left panel → click any chart or table visual
 3. The **Source Columns — All Measures** section loads immediately, showing every source table/column
-4. Click **By Source** to group by source database/table — see which BigQuery datasets, SQL schemas, or files feed this visual
+4. Click **Grouped by Source** to group by source database/table — see which BigQuery datasets, SQL schemas, or files feed this visual
 5. For the full model mapping: click **Source Map** in the toolbar → search, sort, and export as CSV
 
 ### Power BI Developer Quick Start

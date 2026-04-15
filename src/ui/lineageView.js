@@ -1053,8 +1053,9 @@ function renderAggregatedSourceSection(allMeasures) {
   html += `</span></h3>`;
   // View toggle inside summary (stops propagation via JS)
   html += `<span class="agg-view-toggle" onclick="event.stopPropagation()">`;
-  html += `<button class="btn-agg-view active" data-agg-view="flat" title="Show all columns in one flat table">Flat</button>`;
-  html += `<button class="btn-agg-view" data-agg-view="grouped" title="Group columns by source database/table — clearest for data engineers">By Source</button>`;
+  html += `<span class="agg-view-label">View:</span>`;
+  html += `<button class="btn-agg-view active" data-agg-view="flat" title="Show all columns in one single table">All Columns</button>`;
+  html += `<button class="btn-agg-view" data-agg-view="grouped" title="Group columns by source database/table">Grouped by Source</button>`;
   html += `</span>`;
   html += `</summary>`;
 
