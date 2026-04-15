@@ -2479,6 +2479,8 @@ mark {
   color: var(--text-secondary);
   margin-right: 2px;
 }
+.agg-source-flat.hidden,
+.agg-source-grouped.hidden { display: none; }
 .btn-agg-view {
   padding: 2px 8px;
   border: 1px solid var(--border-color);
