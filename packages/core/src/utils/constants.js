@@ -43,6 +43,7 @@ export const EDGE_COLORS = {
   expression_to_source: '#a1887f',
   field_param_to_field: '#e91e63',
   column_to_source_column: '#78909c',
+  table_to_table_join: '#26a69a',
 };
 
 export const EDGE_TYPES = {
@@ -60,6 +61,7 @@ export const EDGE_TYPES = {
   TABLE_TO_EXPRESSION: 'table_to_expression',
   EXPRESSION_TO_SOURCE: 'expression_to_source',
   COLUMN_TO_SOURCE_COLUMN: 'column_to_source_column',
+  TABLE_TO_TABLE_JOIN: 'table_to_table_join',
 };
 
 export const ENRICHMENT_TYPES = {

@@ -468,6 +468,7 @@ async function loadProjectResult(projectResult) {
   let graph = buildGraph(model, report, enrichments);
   graph = applyEnrichments(graph, enrichments);
   state.graph = graph;
+  window.__graph = graph; // debug helper — inspect adjacency in browser console
 
   showLoadingProgress('Step 5/5: Done!', 100);
 
@@ -699,6 +700,7 @@ async function handleLoadSemanticModel() {
     let graph = buildGraph(model, report, enrichments);
     graph = applyEnrichments(graph, enrichments);
     state.graph = graph;
+    window.__graph = graph; // debug helper
 
     showLoadingProgress('Done!', 100);
 

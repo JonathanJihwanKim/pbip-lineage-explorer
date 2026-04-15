@@ -5,7 +5,7 @@
  */
 
 import { NODE_TYPES, EDGE_TYPES } from '../utils/constants.js';
-import { extractMDataSource, extractRenameColumns } from '../parser/tmdlParser.js';
+import { extractMDataSource, extractRenameColumns, extractNestedJoins } from '../parser/tmdlParser.js';
 import { extractUseRelationshipRefs } from '../parser/daxParser.js';
 
 /**
@@ -415,6 +415,22 @@ export function buildGraph(parsedModel, parsedReport, enrichments) {
           const exprId = `expression::${linkedExprName}`;
           if (nodes.has(exprId)) {
             edges.push(createEdge(`table::${table.name}`, exprId, EDGE_TYPES.TABLE_TO_EXPRESSION));
+          }
+        }
+
+        // Create TABLE_TO_TABLE_JOIN edges for M-level joins — these are real lineage:
+        // the right-hand table's rows flow into this table's result set.
+        // Only emit when the target resolves to a known user-table node (skip step refs).
+        const joinSources = [resolvedExpr];
+        if (effectiveExpr && effectiveExpr !== resolvedExpr) joinSources.push(effectiveExpr);
+        const seenJoins = new Set();
+        for (const expr of joinSources) {
+          for (const joinedName of extractNestedJoins(expr)) {
+            const targetId = `table::${joinedName}`;
+            if (!seenJoins.has(targetId) && nodes.has(targetId) && targetId !== `table::${table.name}`) {
+              edges.push(createEdge(`table::${table.name}`, targetId, EDGE_TYPES.TABLE_TO_TABLE_JOIN));
+              seenJoins.add(targetId);
+            }
           }
         }
       }

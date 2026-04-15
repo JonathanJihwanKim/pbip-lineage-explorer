@@ -70,6 +70,20 @@ describe('identifyProjectStructure', () => {
     expect(result.tmdlFiles).toHaveLength(0);
     expect(result.visualFiles).toHaveLength(0);
   });
+
+  it('excludes config-only TMDL files that have no table declaration', () => {
+    // database.tmdl, model.tmdl, cultures/*.tmdl etc. must not become phantom table nodes
+    const files = new Map([
+      ['tables/Orders.tmdl', 'table Orders\n\tcolumn ID\n'],
+      ['definition/database.tmdl', 'compatibilityLevel: 1567\n'],
+      ['definition/model.tmdl', 'culture: en-US\ndefaultPowerBIDataSourceVersion: powerBI_V3\n'],
+      ['definition/cultures/en-US.tmdl', 'culture en-US\n'],
+    ]);
+    const result = identifyProjectStructure(files);
+    // Only the real table file should be routed
+    expect(result.tmdlFiles).toHaveLength(1);
+    expect(result.tmdlFiles[0].path).toBe('tables/Orders.tmdl');
+  });
 });
 
 describe('findDefinitionPbir', () => {

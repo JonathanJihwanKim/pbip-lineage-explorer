@@ -7,7 +7,7 @@
  */
 
 // Parsers
-import { parseTmdlModel, parseExpressions, extractMDataSource, extractRenameColumns } from './parser/tmdlParser.js';
+import { parseTmdlModel, parseExpressions, extractMDataSource, extractRenameColumns, extractNestedJoins } from './parser/tmdlParser.js';
 import { parseDaxExpression, extractColumnRefs, extractMeasureRefs, extractTableRefs, extractUseRelationshipRefs } from './parser/daxParser.js';
 import { parsePbirReport } from './parser/pbirParser.js';
 import { detectEnrichments, applyEnrichments } from './parser/enrichment.js';
@@ -29,7 +29,7 @@ import { resolveImpact } from './diff/impactResolver.js';
 // Re-export everything
 export {
   // Parsers
-  parseTmdlModel, parseExpressions, extractMDataSource, extractRenameColumns,
+  parseTmdlModel, parseExpressions, extractMDataSource, extractRenameColumns, extractNestedJoins,
   parseDaxExpression, extractColumnRefs, extractMeasureRefs, extractTableRefs, extractUseRelationshipRefs,
   parsePbirReport,
   detectEnrichments, applyEnrichments,

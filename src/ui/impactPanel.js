@@ -119,11 +119,14 @@ function renderCurrentImpact() {
   const { upstream, downstream } = analyzeImpact(currentNodeId, currentGraph);
   const nodeIds = currentDirection === 'upstream' ? upstream : downstream;
 
-  // Group nodes by type
+  // Group nodes by type — skip file-artifact phantom nodes (from TMDL config files
+  // like database.tmdl / model.tmdl that don't define user tables).
+  const PHANTOM_TABLE_RE = /^(definition|database|model|culture|en-US|en_US)$|\.pbism$/i;
   const groups = {};
   for (const id of nodeIds) {
     const node = currentGraph.nodes.get(id);
     if (!node) continue;
+    if (node.type === 'table' && PHANTOM_TABLE_RE.test(node.name)) continue;
     const type = node.type;
     if (!groups[type]) groups[type] = [];
     groups[type].push(node);

@@ -8,6 +8,7 @@ import {
   traceMeasureLineage,
   traceVisualLineage,
   extractMDataSource,
+  extractNestedJoins,
   createNode,
   createEdge,
   buildAdjacency,
@@ -377,6 +378,38 @@ describe('traceMeasureLineage – DAG traversal & multi-parent attribution', () 
     const kRow = lineage.sourceTable.find(r => r.pbiColumn === 'K');
     expect(kRow).toBeDefined();
     expect(kRow.sourceColumn).toBe('k');
+  });
+});
+
+describe('extractNestedJoins', () => {
+  it('extracts a bare-identifier right-hand table', () => {
+    const m = `let
+  Source = SomeTable,
+  Joined = Table.NestedJoin(Source, {"OrderID"}, Products, {"ProductID"}, "Products", JoinKind.Inner)
+in Joined`;
+    expect(extractNestedJoins(m)).toEqual(['Products']);
+  });
+
+  it('extracts a quoted #"Step Name" right-hand table', () => {
+    const m = `let
+  Left = Orders,
+  Right = #"Order Lines",
+  Joined = Table.NestedJoin(Left, {"ID"}, #"Order Lines", {"OrderID"}, "Lines", JoinKind.LeftOuter)
+in Joined`;
+    expect(extractNestedJoins(m)).toEqual(['Order Lines']);
+  });
+
+  it('extracts multiple distinct joins', () => {
+    const m = `let
+  J1 = Table.NestedJoin(A, {"k"}, B, {"k"}, "B", JoinKind.Inner),
+  J2 = Table.FuzzyNestedJoin(J1, {"name"}, C, {"name"}, "C", [])
+in J2`;
+    expect(extractNestedJoins(m).sort()).toEqual(['B', 'C']);
+  });
+
+  it('returns empty array when no joins present', () => {
+    const m = `let Source = GoogleBigQuery.Database("project") in Source`;
+    expect(extractNestedJoins(m)).toEqual([]);
   });
 });
 

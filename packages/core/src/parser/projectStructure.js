@@ -27,7 +27,10 @@ export function identifyProjectStructure(files) {
       } else if (lowerPath.endsWith('/expressions.tmdl') || lowerPath === 'expressions.tmdl' ||
                  lowerPath.endsWith('\\expressions.tmdl')) {
         expressionFiles.push({ path, content });
-      } else {
+      } else if (/^table\s+/m.test(content)) {
+        // Only route files that actually declare a table — skip model-level config
+        // files (database.tmdl, model.tmdl, cultures/*.tmdl, etc.) that don't
+        // define user tables and would otherwise become phantom hub nodes.
         tmdlFiles.push({ path, content });
       }
     } else if (lowerPath.endsWith('.json')) {

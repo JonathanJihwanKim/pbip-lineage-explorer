@@ -80,10 +80,9 @@ export function parseTableFile(content, fileName) {
   }
 
   if (!tableName) {
-    // Try to derive name from file path
-    const pathParts = fileName.replace(/\\/g, '/').split('/');
-    const file = pathParts[pathParts.length - 1];
-    tableName = file.replace(/\.tmdl$/, '');
+    // No table declaration found — this is a config file (database.tmdl, model.tmdl,
+    // cultures/*.tmdl, etc.), not a user table. Return null so the caller skips it.
+    return null;
   }
   result.name = tableName;
 
@@ -565,6 +564,38 @@ export function extractMDataSource(mExpression) {
   }
 
   return (result.server || result.database || result.sourceTable) ? result : null;
+}
+
+/**
+ * Extract joined table names from an M (Power Query) expression.
+ * Handles Table.NestedJoin and Table.FuzzyNestedJoin — the standard M join functions
+ * used in Power BI. Joins are real lineage (the right-hand table feeds into this table).
+ *
+ * Signature: Table.NestedJoin(leftTable, leftKeys, rightTable, rightKeys, newColName, joinKind)
+ * We capture the 3rd positional argument (rightTable).
+ *
+ * @param {string} mExpression - The M/Power Query expression text.
+ * @returns {string[]} Array of joined table/step names.
+ */
+export function extractNestedJoins(mExpression) {
+  if (!mExpression) return [];
+
+  // Strip M block comments to avoid matching commented-out code
+  const cleanExpr = mExpression.replace(/\/\*[\s\S]*?\*\//g, '');
+  const results = [];
+
+  // Match the 3rd positional arg (rightTable) which follows:
+  //   Table.NestedJoin/FuzzyNestedJoin(
+  //     <1st arg — no braces>,
+  //     {<2nd arg — key list>},
+  //     <3rd arg — quoted #"Name" or bare identifier>
+  const pattern = /Table\s*\.\s*(?:NestedJoin|FuzzyNestedJoin)\s*\([^{}]*?,\s*\{[^}]*\}\s*,\s*(?:#"([^"]+)"|([A-Za-z_]\w*))/g;
+  let match;
+  while ((match = pattern.exec(cleanExpr)) !== null) {
+    const name = (match[1] || match[2] || '').trim();
+    if (name && !results.includes(name)) results.push(name);
+  }
+  return results;
 }
 
 /**
