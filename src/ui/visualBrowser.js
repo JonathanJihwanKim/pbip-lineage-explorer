@@ -4,11 +4,14 @@
  * Mirrors the measurePicker pattern.
  */
 
+import { collectPageVisuals, shortType, typeCategory, esc } from './pageLayoutData.js';
+
 let _callbacks = {};
 let _visuals = []; // { id, title, type, page, pageOrdinal, measureCount, columnCount }
 let _allPages = []; // { name, ordinal } — all pages including empty ones
 let _searchQuery = '';
 let _pageChangeCounts = new Map(); // pageName → change count
+let _graph = null; // stored for sidebar thumbnail previews
 
 /**
  * Initialize the visual browser.
@@ -37,6 +40,8 @@ export function initVisualBrowser(callbacks = {}) {
 export function populateVisuals(graph) {
   _visuals = [];
   _allPages = [];
+
+  _graph = graph;
 
   // Collect all pages from graph
   for (const node of graph.nodes.values()) {
@@ -151,7 +156,7 @@ function renderList(visuals) {
       const pgChangeCount = _pageChangeCounts.get(page) || 0;
       const pgChangeBadge = pgChangeCount > 0 ? ` <span class="measure-badge measure-badge-changed page-change-badge" data-page="${esc(page)}" title="${pgChangeCount} change${pgChangeCount !== 1 ? 's' : ''} on this page — click to view">${pgChangeCount}</span>` : '';
       html += `<summary class="visual-group-header">${esc(page)} <span class="measure-group-count">(${items.length})</span>${pgChangeBadge}`;
-      html += `<button class="page-layout-btn" data-page="${esc(page)}" aria-label="View page layout"><svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><rect x="1" y="1" width="5" height="5" rx="1"/><rect x="8" y="1" width="5" height="5" rx="1"/><rect x="1" y="8" width="5" height="5" rx="1"/><rect x="8" y="8" width="5" height="5" rx="1"/></svg></button>`;
+      html += `<button class="page-layout-btn" data-page="${esc(page)}" aria-label="View page layout"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="1" width="14" height="14" rx="2"/><line x1="1" y1="5" x2="15" y2="5"/><line x1="6" y1="5" x2="6" y2="15"/></svg> Layout</button>`;
       html += `</summary>`;
     }
     html += `<div class="visual-group-items">`;
@@ -191,23 +196,34 @@ function renderList(visuals) {
       if (_callbacks.onPageLayoutSelect) _callbacks.onPageLayoutSelect(btn.dataset.page);
     });
 
-    btn.addEventListener('mouseenter', () => {
+    btn.addEventListener('mouseenter', (e) => {
       let tip = document.getElementById('sidebar-tooltip');
       if (!tip) {
         tip = document.createElement('div');
         tip.id = 'sidebar-tooltip';
-        tip.className = 'page-layout-tooltip';
+        tip.className = 'page-layout-tooltip sidebar-thumbnail-tip';
         document.body.appendChild(tip);
       }
-      tip.textContent = 'View page layout';
+      if (!btn._thumbnailHtml) {
+        btn._thumbnailHtml = _buildThumbnail(btn.dataset.page);
+      }
+      if (btn._thumbnailHtml) {
+        tip.innerHTML = btn._thumbnailHtml;
+      } else {
+        tip.textContent = 'View page layout';
+      }
+      const x = e.clientX + 12;
+      const y = e.clientY + 12;
+      tip.style.left = `${x}px`;
+      tip.style.top = `${y}px`;
       tip.classList.remove('hidden');
     });
 
     btn.addEventListener('mousemove', (e) => {
       const tip = document.getElementById('sidebar-tooltip');
       if (!tip) return;
-      const x = e.clientX + 10;
-      const y = e.clientY + 10;
+      const x = e.clientX + 12;
+      const y = e.clientY + 12;
       const maxX = window.innerWidth - tip.offsetWidth - 8;
       const maxY = window.innerHeight - tip.offsetHeight - 8;
       tip.style.left = `${Math.min(x, maxX)}px`;
@@ -265,44 +281,53 @@ export function selectVisual(visualId) {
   }
 }
 
-function shortType(type) {
-  if (!type) return '?';
-  const map = {
-    barChart: 'Bar', columnChart: 'Col', lineChart: 'Line', areaChart: 'Area',
-    pieChart: 'Pie', donutChart: 'Donut', card: 'Card', multiRowCard: 'mCard',
-    tableEx: 'Table', matrix: 'Matrix', slicer: 'Slicer', map: 'Map',
-    filledMap: 'Map', scatterChart: 'Scatter', waterfallChart: 'Waterfall',
-    funnel: 'Funnel', gauge: 'Gauge', kpi: 'KPI', treemap: 'Tree',
-    image: 'Img', textbox: 'Text', shape: 'Shape', actionButton: 'Btn',
-    pivotTable: 'Pivot', clusteredColumnChart: 'CCol', clusteredBarChart: 'CBar',
-    stackedColumnChart: 'SCol', stackedBarChart: 'SBar',
-    hundredPercentStackedColumnChart: '%Col', hundredPercentStackedBarChart: '%Bar',
-    lineClusteredColumnComboChart: 'Combo', decompositionTreeVisual: 'DTree',
-    ribbonChart: 'Ribn', cardVisual: 'nCard',
-  };
-  return map[type] || type.substring(0, 5);
-}
-
 /**
- * Categorize a visual type for badge coloring.
+ * Build a miniature page-layout preview HTML for the sidebar hover tooltip.
+ * Cached on the button element as btn._thumbnailHtml after the first call.
  */
-function typeCategory(type) {
-  const charts = new Set([
-    'barChart', 'columnChart', 'lineChart', 'areaChart', 'pieChart', 'donutChart',
-    'scatterChart', 'waterfallChart', 'funnel', 'ribbonChart', 'treemap',
-    'clusteredColumnChart', 'clusteredBarChart', 'stackedColumnChart', 'stackedBarChart',
-    'hundredPercentStackedColumnChart', 'hundredPercentStackedBarChart',
-    'lineClusteredColumnComboChart', 'decompositionTreeVisual',
-  ]);
-  const tables = new Set(['tableEx', 'matrix', 'pivotTable']);
-  const cards = new Set(['card', 'multiRowCard', 'kpi', 'gauge', 'cardVisual']);
-  const filters = new Set(['slicer']);
+function _buildThumbnail(pageName) {
+  if (!_graph) return null;
+  let pageNode = null;
+  for (const node of _graph.nodes.values()) {
+    if (node.type === 'page' && node.name === pageName) { pageNode = node; break; }
+  }
+  if (!pageNode) return null;
 
-  if (charts.has(type)) return 'chart';
-  if (tables.has(type)) return 'table';
-  if (cards.has(type)) return 'card';
-  if (filters.has(type)) return 'filter';
-  return 'other';
+  const { pageW, pageH, contentMaxY, visuals } = collectPageVisuals(pageNode, _graph);
+
+  const thumbW = 220;
+  const thumbH = Math.round(thumbW * pageH / pageW);
+
+  const catBg = {
+    chart: 'var(--color-table)',
+    table: 'var(--color-column)',
+    card: 'var(--color-visual)',
+    filter: 'var(--color-measure)',
+    other: 'var(--color-source)',
+  };
+
+  const positioned = visuals.filter(v => v.type !== 'group' && !v.isHidden && v.position);
+  positioned.sort((a, b) => (a.position.z || 0) - (b.position.z || 0));
+
+  let rects = '';
+  for (const v of positioned) {
+    const p = v.position;
+    const left = (p.x / pageW * 100).toFixed(2);
+    const top = (p.y / pageH * 100).toFixed(2);
+    const width = (p.width / pageW * 100).toFixed(2);
+    const height = (p.height / pageH * 100).toFixed(2);
+    const bg = catBg[typeCategory(v.type)] || catBg.other;
+    rects += `<div style="position:absolute;left:${left}%;top:${top}%;width:${width}%;height:${height}%;background:${bg};opacity:0.65;border-radius:1px;box-sizing:border-box;"></div>`;
+  }
+
+  const belowFold = contentMaxY > pageH
+    ? `<div style="font-size:10px;color:var(--text-muted);margin-top:4px;">+ content below declared page bottom</div>`
+    : '';
+
+  return `<div style="font-size:11px;font-weight:600;color:var(--text-primary);margin-bottom:6px;">${esc(pageName)}</div>` +
+    `<div style="position:relative;width:${thumbW}px;height:${thumbH}px;background:var(--bg-body);border:1px solid rgba(66,133,244,0.35);border-radius:4px;overflow:hidden;">${rects}</div>` +
+    belowFold +
+    `<div style="font-size:10px;color:var(--text-muted);margin-top:6px;">Click to explore visual lineage</div>`;
 }
 
 /**
@@ -316,7 +341,3 @@ function highlightMatch(text, query) {
   return escaped.replace(regex, '<mark>$1</mark>');
 }
 
-function esc(str) {
-  if (!str) return '';
-  return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
