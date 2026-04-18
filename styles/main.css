@@ -1619,6 +1619,17 @@ mark {
   opacity: 0.85;
 }
 
+/* No-binding visuals (buttons, shapes, textboxes, navigators, images) —
+   Pass pointer events through to data-bearing visuals beneath. Still visible
+   as layout chrome; fully interactive via the companion list below. */
+.page-layout-nobinding {
+  pointer-events: none;
+  opacity: 0.55;
+}
+.page-layout-nobinding.layout-highlight {
+  opacity: 0.95;
+}
+
 .page-layout-hidden-chip {
   position: absolute;
   top: 2px;

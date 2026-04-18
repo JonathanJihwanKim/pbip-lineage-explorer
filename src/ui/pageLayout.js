@@ -177,7 +177,9 @@ function _visualRect(v, pageW, contentMaxY, isHidden) {
   if (v.fpMeasures && v.fpMeasures.length > 0) parts.push(`+${v.fpMeasures.length}fp`);
   if (v.columnCount > 0) parts.push(`${v.columnCount}f`);
   const hiddenClass = isHidden ? ' page-layout-hidden-visual' : '';
-  let html = `<div class="page-layout-visual${hiddenClass}" data-id="${esc(v.id)}" data-category="${cat}" `;
+  const hasBindings = v.measureCount > 0 || v.columnCount > 0 || (v.fpMeasures && v.fpMeasures.length > 0);
+  const noBindingClass = hasBindings ? '' : ' page-layout-nobinding';
+  let html = `<div class="page-layout-visual${hiddenClass}${noBindingClass}" data-id="${esc(v.id)}" data-category="${cat}" `;
   html += `style="left:${left}%;top:${top}%;width:${width}%;height:${height}%;z-index:${zIndex}" title="">`;
   html += `<span class="page-layout-visual-badge" data-category="${cat}">${esc(shortType(v.type))}</span>`;
   html += `<span class="page-layout-visual-title">${esc(label)}</span>`;
