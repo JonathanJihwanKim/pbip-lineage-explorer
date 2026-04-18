@@ -286,7 +286,12 @@ export function renderLineageTree(container, treeData) {
   // SVG height: use full computed height up to MAX_SVG_HEIGHT so tall trees aren't compressed
   const svgHeight = Math.min(height, MAX_SVG_HEIGHT);
 
-  const svg = d3.select(container)
+  // Wrapper holds the SVG, zoom controls overlay, and pan/zoom hint
+  const wrapper = d3.select(container)
+    .append('div')
+    .attr('class', 'lineage-tree-wrapper');
+
+  const svg = wrapper
     .append('svg')
     .attr('class', 'lineage-tree-svg')
     .attr('width', '100%')
@@ -303,20 +308,38 @@ export function renderLineageTree(container, treeData) {
 
   svg.call(zoom);
 
-  // Auto-fit: after SVG is in DOM, compute scale to fit full tree in viewport
-  requestAnimationFrame(() => {
+  // Zoom controls overlay (top-right) — discoverable affordance for wheel-zoom/pan
+  const controls = wrapper.append('div').attr('class', 'tree-zoom-controls');
+  controls.append('button').attr('class', 'tree-zoom-btn').attr('data-zoom', 'in').attr('title', 'Zoom in').text('+');
+  controls.append('button').attr('class', 'tree-zoom-btn').attr('data-zoom', 'out').attr('title', 'Zoom out').text('\u2212');
+  controls.append('button').attr('class', 'tree-zoom-btn').attr('data-zoom', 'fit').attr('title', 'Fit tree to view').text('Fit');
+  controls.append('button').attr('class', 'tree-zoom-btn').attr('data-zoom', 'reset').attr('title', 'Reset to 100%').text('1\u00d7');
+
+  wrapper.append('div').attr('class', 'tree-zoom-hint').text('Scroll to zoom \u00b7 Drag to pan');
+
+  function fitToView() {
     const svgEl = svg.node();
     if (!svgEl) return;
     const availW = svgEl.clientWidth || width;
     const availH = svgEl.clientHeight || svgHeight;
-    // Scale to fit the full tree coordinate space in the visible area
     const scaleX = availW / (width + 80);
     const scaleY = availH / (height + 60);
-    const fitScale = Math.min(scaleX, scaleY, 1); // never zoom in beyond 1x initially
+    const fitScale = Math.min(scaleX, scaleY, 1);
     const tx = Math.max(20, (availW - width * fitScale) / 2);
     const ty = Math.max(10, (availH - height * fitScale) / 2);
-    svg.call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(fitScale));
+    svg.transition().duration(250).call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(fitScale));
+  }
+
+  controls.selectAll('.tree-zoom-btn').on('click', function() {
+    const action = this.getAttribute('data-zoom');
+    if (action === 'in') svg.transition().duration(180).call(zoom.scaleBy, 1.4);
+    else if (action === 'out') svg.transition().duration(180).call(zoom.scaleBy, 1 / 1.4);
+    else if (action === 'fit') fitToView();
+    else if (action === 'reset') svg.transition().duration(250).call(zoom.transform, d3.zoomIdentity.translate(20, 10).scale(1));
   });
+
+  // Auto-fit on first paint
+  requestAnimationFrame(() => fitToView());
 
   // Draw links
   const linkGenerator = d3.linkHorizontal()
@@ -569,15 +592,17 @@ function addLegend(svg, width) {
     { type: 'source',      label: LAYER_LABELS[6], prefix: 'L6' },
   ];
 
+  const rowH = 24;
+  const legendW = 210;
   const legend = svg.append('g')
     .attr('class', 'tree-legend')
-    .attr('transform', `translate(${width - 175}, 10)`);
+    .attr('transform', `translate(${width - legendW - 10}, 10)`);
 
   legend.append('rect')
-    .attr('x', -8)
-    .attr('y', -8)
-    .attr('width', 173)
-    .attr('height', legendData.length * 20 + 16)
+    .attr('x', -10)
+    .attr('y', -10)
+    .attr('width', legendW)
+    .attr('height', legendData.length * rowH + 20)
     .attr('rx', 6)
     .attr('fill', 'rgba(22, 33, 62, 0.92)')
     .attr('stroke', '#2a2a4a');
@@ -586,18 +611,18 @@ function addLegend(svg, width) {
     .data(legendData)
     .join('g')
     .attr('class', 'legend-entry')
-    .attr('transform', (d, i) => `translate(0, ${i * 20})`);
+    .attr('transform', (d, i) => `translate(0, ${i * rowH})`);
 
   entries.append('circle')
-    .attr('cx', 6)
-    .attr('cy', 6)
-    .attr('r', 4)
+    .attr('cx', 8)
+    .attr('cy', 8)
+    .attr('r', 5)
     .attr('fill', d => LAYER_COLORS[d.type] || '#607d8b');
 
   entries.append('text')
-    .attr('x', 16)
-    .attr('y', 10)
+    .attr('x', 20)
+    .attr('y', 12)
     .text(d => `${d.prefix}: ${d.label}`)
-    .attr('fill', '#b0b0c0')
-    .attr('font-size', '11px');
+    .attr('fill', '#d4d4e0')
+    .attr('font-size', '13px');
 }

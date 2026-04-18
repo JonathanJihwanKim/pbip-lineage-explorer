@@ -456,7 +456,7 @@ function renderSourceTableSection(sourceTable) {
   // Count unique sources
   const uniqueSources = new Set(sourceTable.filter(r => r.sourceTable).map(r => r.sourceTable));
 
-  let html = '<details class="lineage-section lineage-section-collapsible" open>';
+  let html = '<details class="lineage-section lineage-section-collapsible">';
   html += `<summary class="lineage-section-header"><h3>3. Source Lineage <span class="section-summary-count">${sourceTable.length} column${sourceTable.length !== 1 ? 's' : ''} traced to ${uniqueSources.size} source${uniqueSources.size !== 1 ? 's' : ''}</span></h3></summary>`;
 
   html += '<div class="trace-table-wrapper"><table class="trace-table">';
@@ -1057,7 +1057,7 @@ function renderAggregatedSourceSection(allMeasures) {
   const uniqueSources = new Set(rows.filter(r => r.sourceTable).map(r => r.sourceTable));
   const renamedCount = rows.filter(r => r.renamed).length;
 
-  let html = '<details class="lineage-section lineage-section-collapsible agg-source-section" open>';
+  let html = '<details class="lineage-section lineage-section-collapsible agg-source-section">';
   html += `<summary class="lineage-section-header">`;
   html += `<h3>Source Columns — All Measures `;
   html += `<span class="section-summary-count">${rows.length} column${rows.length !== 1 ? 's' : ''} from ${uniqueSources.size} source${uniqueSources.size !== 1 ? 's' : ''}`;

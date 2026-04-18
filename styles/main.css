@@ -423,6 +423,10 @@ button .icon { margin-right: 4px; }
   display: none;
 }
 
+.lineage-tree-wrapper {
+  position: relative;
+}
+
 .lineage-tree-svg {
   display: block;
   cursor: grab;
@@ -430,6 +434,56 @@ button .icon { margin-right: 4px; }
 
 .lineage-tree-svg:active {
   cursor: grabbing;
+}
+
+/* Zoom control overlay (top-right of tree wrapper) */
+.tree-zoom-controls {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  display: flex;
+  gap: 4px;
+  z-index: 5;
+  background: rgba(22, 33, 62, 0.92);
+  border: 1px solid #2a2a4a;
+  border-radius: 6px;
+  padding: 4px;
+}
+
+.tree-zoom-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-primary, #d4d4e0);
+  font-size: 13px;
+  font-weight: 600;
+  min-width: 28px;
+  height: 26px;
+  padding: 0 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: var(--font-sans, system-ui, sans-serif);
+  line-height: 1;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+.tree-zoom-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: var(--border-color, #3a3a5a);
+}
+.tree-zoom-btn:active {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.tree-zoom-hint {
+  position: absolute;
+  bottom: 10px;
+  left: 10px;
+  font-size: 11px;
+  color: var(--text-muted);
+  background: rgba(22, 33, 62, 0.75);
+  padding: 4px 8px;
+  border-radius: 4px;
+  pointer-events: none;
+  user-select: none;
 }
 
 /* --- Lineage Sections --- */
@@ -734,12 +788,26 @@ button .icon { margin-right: 4px; }
   background: var(--bg-panel);
 }
 .measure-accordion-header {
-  padding: 10px 14px; cursor: pointer;
+  padding: 10px 14px 10px 32px; cursor: pointer;
   font-size: 14px; font-weight: 600;
   list-style: none; outline: none;
   display: flex; align-items: center;
+  position: relative;
+  transition: background 0.12s ease;
 }
+.measure-accordion-header:hover { background: var(--bg-hover, rgba(255,255,255,0.03)); }
 .measure-accordion-header::-webkit-details-marker { display: none; }
+.measure-accordion-header::before {
+  content: '\25B8';
+  position: absolute;
+  left: 14px;
+  color: var(--text-muted);
+  font-size: 11px;
+  transition: transform 0.15s ease;
+}
+.measure-accordion[open] > .measure-accordion-header::before {
+  transform: rotate(90deg);
+}
 .measure-accordion-body { padding: 0 16px 12px; }
 
 /* --- Field Parameter Measure List --- */
@@ -2529,13 +2597,27 @@ mark {
 }
 .commit-group-summary {
   cursor: pointer;
-  padding: 8px 12px;
+  padding: 8px 12px 8px 28px;
   display: flex;
   align-items: center;
   gap: 8px;
   background: rgba(255, 255, 255, 0.03);
   font-size: 12px;
   user-select: none;
+  list-style: none;
+  position: relative;
+}
+.commit-group-summary::-webkit-details-marker { display: none; }
+.commit-group-summary::before {
+  content: '\25B8';
+  position: absolute;
+  left: 10px;
+  color: var(--text-muted);
+  font-size: 11px;
+  transition: transform 0.15s ease;
+}
+.commit-group[open] > .commit-group-summary::before {
+  transform: rotate(90deg);
 }
 .commit-group-summary:hover {
   background: rgba(255, 255, 255, 0.06);
@@ -2564,6 +2646,21 @@ mark {
   font-size: 12px;
   color: var(--color-measure);
   user-select: none;
+  list-style: none;
+  position: relative;
+  padding-left: 16px;
+  display: inline-block;
+}
+.change-dax-summary::-webkit-details-marker { display: none; }
+.change-dax-summary::before {
+  content: '\25B8';
+  position: absolute;
+  left: 2px;
+  font-size: 10px;
+  transition: transform 0.15s ease;
+}
+.change-dax-details[open] > .change-dax-summary::before {
+  transform: rotate(90deg);
 }
 .change-dax-summary:hover {
   text-decoration: underline;
@@ -2701,11 +2798,24 @@ mark {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 12px;
+  padding: 8px 12px 8px 28px;
   background: rgba(66, 133, 244, 0.06);
   cursor: pointer;
   user-select: none;
   list-style: none;
+  position: relative;
+}
+.source-group-header::-webkit-details-marker { display: none; }
+.source-group-header::before {
+  content: '\25B8';
+  position: absolute;
+  left: 10px;
+  color: var(--text-muted);
+  font-size: 11px;
+  transition: transform 0.15s ease;
+}
+.source-group[open] > .source-group-header::before {
+  transform: rotate(90deg);
 }
 .source-group-header:hover { background: rgba(66, 133, 244, 0.12); }
 .source-group-dot {
