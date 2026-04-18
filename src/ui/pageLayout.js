@@ -96,7 +96,8 @@ function _repaint() {
     </div>
     <div class="layout-list-controls">
       <span class="layout-list-heading">All visuals (${nonGroups.length})</span>
-      <input id="layout-list-filter" class="layout-list-filter" placeholder="Filter visuals\u2026" value="${esc(_listQuery)}">
+      <input id="layout-list-filter" class="layout-list-filter" placeholder="Filter by title, type, measure, or column\u2026" value="${esc(_listQuery)}">
+      <span class="layout-list-legend">m\u00a0= measures\u00a0\u00b7\u00a0f\u00a0= fields (columns)</span>
       <select id="layout-list-sort" class="layout-list-sort">
         <option value="z"${_sortOrder === 'z' ? ' selected' : ''}>Z-order</option>
         <option value="measures"${_sortOrder === 'measures' ? ' selected' : ''}>Measures \u2193</option>
@@ -173,13 +174,20 @@ function _visualRect(v, pageW, contentMaxY, isHidden) {
   const label = v.title || shortType(v.type);
   const parts = [];
   if (v.measureCount > 0) parts.push(`${v.measureCount}m`);
+  if (v.fpMeasures && v.fpMeasures.length > 0) parts.push(`+${v.fpMeasures.length}fp`);
   if (v.columnCount > 0) parts.push(`${v.columnCount}f`);
   const hiddenClass = isHidden ? ' page-layout-hidden-visual' : '';
   let html = `<div class="page-layout-visual${hiddenClass}" data-id="${esc(v.id)}" data-category="${cat}" `;
   html += `style="left:${left}%;top:${top}%;width:${width}%;height:${height}%;z-index:${zIndex}" title="">`;
   html += `<span class="page-layout-visual-badge" data-category="${cat}">${esc(shortType(v.type))}</span>`;
   html += `<span class="page-layout-visual-title">${esc(label)}</span>`;
-  if (parts.length > 0) html += `<span class="page-layout-visual-meta">${parts.join('\u00a0')}</span>`;
+  if (parts.length > 0) {
+    const metaTitleParts = [];
+    if (v.measureCount > 0) metaTitleParts.push(`${v.measureCount} measure${v.measureCount !== 1 ? 's' : ''}`);
+    if (v.fpMeasures && v.fpMeasures.length > 0) metaTitleParts.push(`${v.fpMeasures.length} via field parameter`);
+    if (v.columnCount > 0) metaTitleParts.push(`${v.columnCount} field${v.columnCount !== 1 ? 's' : ''} (columns)`);
+    html += `<span class="page-layout-visual-meta" title="${metaTitleParts.join(', ')}">${parts.join('\u00a0')}</span>`;
+  }
   if (isHidden) html += `<span class="page-layout-hidden-chip">HIDDEN</span>`;
   html += `</div>`;
   return html;
@@ -192,7 +200,10 @@ function _buildListHtml(nonGroups, sortOrder, query, showHidden) {
     const q = query.toLowerCase();
     list = list.filter(v =>
       v.title.toLowerCase().includes(q) ||
-      v.type.toLowerCase().includes(q)
+      v.type.toLowerCase().includes(q) ||
+      v.measures.some(m => m.toLowerCase().includes(q)) ||
+      v.fpMeasures.some(m => m.toLowerCase().includes(q)) ||
+      v.columns.some(c => c.toLowerCase().includes(q))
     );
   }
 
@@ -217,7 +228,12 @@ function _buildListHtml(nonGroups, sortOrder, query, showHidden) {
     const label = v.title || shortType(v.type);
     const metaParts = [];
     if (v.measureCount > 0) metaParts.push(`${v.measureCount}m`);
+    if (v.fpMeasures && v.fpMeasures.length > 0) metaParts.push(`+${v.fpMeasures.length}fp`);
     if (v.columnCount > 0) metaParts.push(`${v.columnCount}f`);
+    const metaTitleParts = [];
+    if (v.measureCount > 0) metaTitleParts.push(`${v.measureCount} measure${v.measureCount !== 1 ? 's' : ''}`);
+    if (v.fpMeasures && v.fpMeasures.length > 0) metaTitleParts.push(`${v.fpMeasures.length} via field parameter`);
+    if (v.columnCount > 0) metaTitleParts.push(`${v.columnCount} field${v.columnCount !== 1 ? 's' : ''} (columns)`);
     const zVal = v.position?.z != null ? Math.floor(v.position.z / 100) : null;
     const zBadge = zVal != null ? `<span class="layout-list-z">z${zVal}</span>` : '';
     const noPosBadge = !v.position ? `<span class="layout-list-badge layout-badge-nopos">no pos</span>` : '';
@@ -226,7 +242,7 @@ function _buildListHtml(nonGroups, sortOrder, query, showHidden) {
       `<span class="visual-type-badge" data-category="${cat}">${esc(shortType(v.type))}</span>` +
       `<span class="layout-list-title">${esc(label)}</span>` +
       `${hiddenBadge}${noPosBadge}` +
-      `<span class="layout-list-meta">${metaParts.join('\u00a0')}</span>` +
+      `<span class="layout-list-meta" title="${metaTitleParts.join(', ')}">${metaParts.join('\u00a0')}</span>` +
       `${zBadge}` +
       `</div>`;
   }).join('');
@@ -282,7 +298,7 @@ function _bindDelegatedOnce(treeContainer, sectionsContainer) {
       const listBody = document.getElementById('layout-list-body');
       if (listBody) {
         const row = listBody.querySelector(`.layout-list-row[data-id="${CSS.escape(el.dataset.id)}"]`);
-        if (row) { row.classList.add('layout-highlight'); row.scrollIntoView({ block: 'nearest' }); }
+        if (row) { row.classList.add('layout-highlight'); }
       }
       const tip = document.getElementById('page-layout-tooltip');
       if (tip) {

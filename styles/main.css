@@ -1730,6 +1730,13 @@ mark {
   flex: 0 0 auto;
 }
 
+.layout-list-legend {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-left: auto;
+  white-space: nowrap;
+}
+
 .layout-list-filter {
   flex: 1;
   min-width: 100px;

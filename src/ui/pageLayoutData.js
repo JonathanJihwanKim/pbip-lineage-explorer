@@ -62,7 +62,7 @@ export function collectPageVisuals(pageNode, graph) {
       position: node.metadata.position ? { ...node.metadata.position } : null,
       isHidden: node.metadata.isHidden || false,
       parentGroupName: node.metadata.parentGroupName || null,
-      measureCount: measureCount + fpMeasures.length,
+      measureCount,
       columnCount,
       measures,
       fpMeasures,
@@ -131,8 +131,12 @@ export function shortType(type) {
     hundredPercentStackedColumnChart: '%Col', hundredPercentStackedBarChart: '%Bar',
     lineClusteredColumnComboChart: 'Combo', decompositionTreeVisual: 'DTree',
     ribbonChart: 'Ribn', cardVisual: 'nCard',
+    advancedSlicerVisual: 'Slcr', pageNavigator: 'Nav', bookmarkNavigator: 'BkNav',
+    pythonVisual: 'Py', rVisual: 'R', map: 'Map', filledMap: 'FMap',
   };
-  return map[type] || type.substring(0, 5);
+  if (map[type]) return map[type];
+  if (type.includes('PBIVIZ') || (type.includes('_') && type.length > 10)) return 'Cust';
+  return type.substring(0, 5);
 }
 
 export function typeCategory(type) {
@@ -145,11 +149,13 @@ export function typeCategory(type) {
   ]);
   const tables = new Set(['tableEx', 'matrix', 'pivotTable']);
   const cards = new Set(['card', 'multiRowCard', 'kpi', 'gauge', 'cardVisual']);
-  const filters = new Set(['slicer']);
+  const filters = new Set(['slicer', 'advancedSlicerVisual', 'pageNavigator', 'bookmarkNavigator']);
+  const others = new Set(['pythonVisual', 'rVisual', 'image', 'textbox', 'shape', 'actionButton', 'map', 'filledMap']);
   if (charts.has(type)) return 'chart';
   if (tables.has(type)) return 'table';
   if (cards.has(type)) return 'card';
   if (filters.has(type)) return 'filter';
+  if (others.has(type)) return 'other';
   return 'other';
 }
 
