@@ -691,9 +691,34 @@ button .icon { margin-right: 4px; }
   cursor: pointer; font-size: 13px;
   color: var(--text-secondary);
   font-family: 'Cascadia Code', 'Fira Code', monospace;
-  padding: 4px 6px;
+  padding: 4px 6px 4px 22px;
   background: var(--bg-input); border-radius: 4px 4px 0 0;
   list-style: none; outline: none;
+  position: relative;
+  transition: background 0.12s ease;
+}
+.chain-dax-summary::-webkit-details-marker { display: none; }
+.chain-dax-summary::before {
+  content: '\25B8';
+  position: absolute;
+  left: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+  font-size: 10px;
+  transition: transform 0.15s ease;
+}
+.chain-dax-details[open] > .chain-dax-summary::before {
+  transform: translateY(-50%) rotate(90deg);
+}
+.chain-dax-summary:hover {
+  background: var(--bg-hover, var(--bg-panel));
+  color: var(--text-primary);
+}
+.chain-dax-summary-hint {
+  font-style: italic;
+  color: var(--text-muted);
+  font-family: var(--font-sans, system-ui, sans-serif);
 }
 .chain-dax-details[open] .chain-dax-summary {
   border-bottom: 1px solid var(--border-color);

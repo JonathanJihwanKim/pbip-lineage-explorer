@@ -339,11 +339,23 @@ function renderChainNode(chain, depth) {
 
   if (chain.expression) {
     // Full DAX with syntax highlighting in collapsible details
-    const firstLine = chain.expression.split('\n')[0];
-    const isLong = chain.expression.length > 100 || chain.expression.includes('\n');
+    const lines = chain.expression.split('\n');
+    const isLong = chain.expression.length > 100 || lines.length > 1;
     if (isLong) {
+      // Find the first non-empty, non-fence preview line so the summary always
+      // communicates something useful (triple-backtick fences and leading blanks
+      // otherwise produce an opaque bar that looks uninteractive).
+      const previewLine = lines.find(l => {
+        const t = l.trim();
+        return t && t !== '```' && !/^```/.test(t);
+      }) || '';
+      const lineCount = lines.length;
+      const lineCountLabel = `<span class="chain-dax-summary-hint"> \u00b7 ${lineCount} line${lineCount !== 1 ? 's' : ''}</span>`;
+      const summaryBody = previewLine.trim()
+        ? `${highlightDax(previewLine.substring(0, 100))}${previewLine.length > 100 ? '\u2026' : ''}${lineCountLabel}`
+        : `<span class="chain-dax-summary-hint">Show full DAX expression \u00b7 ${lineCount} line${lineCount !== 1 ? 's' : ''}</span>`;
       html += `<details class="chain-dax-details">`;
-      html += `<summary class="chain-dax-summary">${highlightDax(firstLine.substring(0, 100))}${firstLine.length > 100 ? '...' : ''}</summary>`;
+      html += `<summary class="chain-dax-summary" title="Click to expand full DAX expression">${summaryBody}</summary>`;
       html += `<div class="chain-dax">${highlightDax(chain.expression)}</div>`;
       html += `</details>`;
     } else {
