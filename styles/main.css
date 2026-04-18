@@ -2787,6 +2787,78 @@ mark {
   color: #fff;
 }
 
+/* --- Agg Source Header — clickable affordance --- */
+.agg-source-section > .agg-source-header {
+  justify-content: flex-start;
+  padding: 8px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-panel);
+  transition: background 0.12s, border-color 0.12s;
+}
+.agg-source-section > .agg-source-header:hover {
+  background: rgba(66, 133, 244, 0.08);
+  border-color: var(--accent);
+}
+/* Disable the generic ::before chevron for this header */
+.agg-source-section > .agg-source-header::before { content: none; }
+.agg-source-chevron {
+  display: inline-block;
+  font-size: 13px;
+  color: var(--accent);
+  margin-right: 8px;
+  flex-shrink: 0;
+  transition: transform 0.15s;
+}
+.agg-source-section[open] > .agg-source-header .agg-source-chevron {
+  transform: rotate(90deg);
+}
+.agg-source-section > .agg-source-header .agg-view-toggle { margin-left: auto; }
+.agg-source-hint {
+  margin-left: 12px;
+  font-size: 11px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.agg-source-section[open] > .agg-source-header .agg-source-hint { display: none; }
+/* Square bottom corners when peek is visible below */
+.agg-source-wrapper .agg-source-section:not([open]) > .agg-source-header {
+  border-radius: 6px 6px 0 0;
+}
+
+/* --- Agg Source Peek Preview --- */
+.agg-source-peek {
+  position: relative;
+  border: 1px solid var(--border-color);
+  border-top: none;
+  border-radius: 0 0 6px 6px;
+  overflow: hidden;
+  max-height: 130px;
+}
+.agg-source-section[open] + .agg-source-peek { display: none; }
+.agg-source-peek-fade {
+  position: absolute;
+  left: 0; right: 0; bottom: 36px; height: 52px;
+  background: linear-gradient(transparent, var(--bg-panel));
+  pointer-events: none;
+}
+.agg-source-peek-cta {
+  display: block;
+  width: 100%;
+  padding: 7px 12px;
+  border: none;
+  border-top: 1px solid var(--border-color);
+  background: var(--bg-panel);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 500;
+  text-align: center;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.agg-source-peek-cta:hover { background: rgba(66, 133, 244, 0.12); }
+
 /* --- Source Group (By Source grouped view) --- */
 .source-group {
   margin-bottom: 10px;

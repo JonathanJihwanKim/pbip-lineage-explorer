@@ -1057,38 +1057,53 @@ function renderAggregatedSourceSection(allMeasures) {
   const uniqueSources = new Set(rows.filter(r => r.sourceTable).map(r => r.sourceTable));
   const renamedCount = rows.filter(r => r.renamed).length;
 
-  let html = '<details class="lineage-section lineage-section-collapsible agg-source-section">';
-  html += `<summary class="lineage-section-header">`;
-  html += `<h3>Source Columns — All Measures `;
-  html += `<span class="section-summary-count">${rows.length} column${rows.length !== 1 ? 's' : ''} from ${uniqueSources.size} source${uniqueSources.size !== 1 ? 's' : ''}`;
-  if (renamedCount > 0) html += ` · ${renamedCount} renamed`;
-  html += `</span></h3>`;
-  // View toggle inside summary (stops propagation via JS)
+  const summaryCount = `${rows.length} column${rows.length !== 1 ? 's' : ''} from ${uniqueSources.size} source${uniqueSources.size !== 1 ? 's' : ''}${renamedCount > 0 ? ` · ${renamedCount} renamed` : ''}`;
+
+  function renderFlatRow(row) {
+    let r = `<tr${row.renamed ? ' class="renamed-row"' : ''}>`;
+    r += `<td>${esc(row.pbiTable)}[${esc(row.pbiColumn)}]</td>`;
+    r += `<td>${esc(row.sourceTable || '')}</td>`;
+    r += `<td>${esc(row.originalSourceColumn || row.sourceColumn || '')}</td>`;
+    if (row.renamed && row.renameChain) {
+      r += `<td class="rename-chain-cell">${esc(row.renameChain.sourceName)} <span class="rename-arrow">→</span> ${esc(row.renameChain.pqName)} <span class="rename-arrow">→</span> ${esc(row.renameChain.pbiName)}</td>`;
+    } else {
+      r += '<td></td>';
+    }
+    r += `<td>${esc(row.fromMeasure)}</td>`;
+    r += '</tr>';
+    return r;
+  }
+
+  const flatTableHead = '<thead><tr><th>PBI Column</th><th>Source Table</th><th>Original Source Column</th><th>Rename Chain</th><th>Used By Measure</th></tr></thead>';
+
+  // ≤2 rows: nothing to hide, render flat directly without chevron
+  if (rows.length <= 2) {
+    let html = '<div class="lineage-section">';
+    html += `<h3>Source Columns — All Measures <span class="section-summary-count">${summaryCount}</span></h3>`;
+    html += `<div class="trace-table-wrapper"><table class="trace-table">${flatTableHead}<tbody>`;
+    for (const row of rows) html += renderFlatRow(row);
+    html += '</tbody></table></div></div>';
+    return html;
+  }
+
+  let html = '<section class="agg-source-wrapper">';
+
+  html += '<details class="lineage-section lineage-section-collapsible agg-source-section">';
+  html += `<summary class="lineage-section-header agg-source-header">`;
+  html += `<span class="agg-source-chevron" aria-hidden="true">&#x25B6;</span>`;
+  html += `<h3>Source Columns — All Measures <span class="section-summary-count">${summaryCount}</span></h3>`;
   html += `<span class="agg-view-toggle" onclick="event.stopPropagation()">`;
   html += `<span class="agg-view-label">View:</span>`;
   html += `<button class="btn-agg-view active" data-agg-view="flat" title="Show all columns in one single table">All Columns</button>`;
   html += `<button class="btn-agg-view" data-agg-view="grouped" title="Group columns by source database/table">Grouped by Source</button>`;
   html += `</span>`;
+  html += `<span class="agg-source-hint">Click to expand</span>`;
   html += `</summary>`;
 
   // Flat view
   html += '<div class="agg-source-flat">';
-  html += '<div class="trace-table-wrapper"><table class="trace-table">';
-  html += '<thead><tr><th>PBI Column</th><th>Source Table</th><th>Original Source Column</th><th>Rename Chain</th><th>Used By Measure</th></tr></thead>';
-  html += '<tbody>';
-  for (const row of rows) {
-    html += `<tr${row.renamed ? ' class="renamed-row"' : ''}>`;
-    html += `<td>${esc(row.pbiTable)}[${esc(row.pbiColumn)}]</td>`;
-    html += `<td>${esc(row.sourceTable || '')}</td>`;
-    html += `<td>${esc(row.originalSourceColumn || row.sourceColumn || '')}</td>`;
-    if (row.renamed && row.renameChain) {
-      html += `<td class="rename-chain-cell">${esc(row.renameChain.sourceName)} <span class="rename-arrow">→</span> ${esc(row.renameChain.pqName)} <span class="rename-arrow">→</span> ${esc(row.renameChain.pbiName)}</td>`;
-    } else {
-      html += '<td></td>';
-    }
-    html += `<td>${esc(row.fromMeasure)}</td>`;
-    html += '</tr>';
-  }
+  html += `<div class="trace-table-wrapper"><table class="trace-table">${flatTableHead}<tbody>`;
+  for (const row of rows) html += renderFlatRow(row);
   html += '</tbody></table></div>';
   html += '</div>';
 
@@ -1130,6 +1145,17 @@ function renderAggregatedSourceSection(allMeasures) {
   html += '</div>';
 
   html += '</details>';
+
+  // Peek preview — 2 rows visible when collapsed, hidden when section is open
+  html += '<div class="agg-source-peek" aria-hidden="true">';
+  html += `<div class="trace-table-wrapper"><table class="trace-table">${flatTableHead}<tbody>`;
+  for (const row of rows.slice(0, 2)) html += renderFlatRow(row);
+  html += '</tbody></table></div>';
+  html += '<div class="agg-source-peek-fade"></div>';
+  html += `<button type="button" class="agg-source-peek-cta">Show all ${rows.length} column${rows.length !== 1 ? 's' : ''} &#x25BC;</button>`;
+  html += '</div>';
+
+  html += '</section>';
   return html;
 }
 
@@ -1154,6 +1180,14 @@ function bindClickHandlers(container) {
         flat?.classList.remove('hidden');
         grouped?.classList.add('hidden');
       }
+    });
+  });
+
+  // Peek CTA — clicking "Show all N columns" opens the details
+  container.querySelectorAll('.agg-source-peek-cta').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const details = btn.closest('.agg-source-wrapper')?.querySelector('.agg-source-section');
+      if (details) details.open = true;
     });
   });
 
