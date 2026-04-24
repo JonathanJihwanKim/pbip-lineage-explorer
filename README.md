@@ -8,13 +8,16 @@
 
 [![Try Live Demo](https://img.shields.io/badge/Try%20Live%20Demo-▶%20Open%20in%20Browser-28a745?style=for-the-badge&logo=powerbi)](https://jonathanjihwankim.github.io/pbip-lineage-explorer/)
 [![Sponsor](https://img.shields.io/badge/Sponsor-❤%20Support%20This%20Tool-ea4aaa?style=for-the-badge&logo=github-sponsors)](https://github.com/sponsors/JonathanJihwanKim)
+[![GitHub Stars](https://img.shields.io/github/stars/JonathanJihwanKim/pbip-lineage-explorer?style=for-the-badge&logo=github&color=f0a500)](https://github.com/JonathanJihwanKim/pbip-lineage-explorer/stargazers)
 
-![GitHub stars](https://img.shields.io/github/stars/JonathanJihwanKim/pbip-lineage-explorer?style=flat) Built by a **Microsoft MVP** · Free forever · 100% client-side · Your files never leave your browser · [MIT License](LICENSE)
+Built by a **Microsoft MVP** · Free forever · 100% client-side · Your files never leave your browser · [MIT License](LICENSE)
 
 ![PBIP Lineage Explorer Screenshot](docs/screenshot.png)
 *Click a visual → see the full chain from visual to BigQuery source column, including Power Query renames.*
 
 > **No PBIP file?** [Try it now with built-in sample data](https://jonathanjihwankim.github.io/pbip-lineage-explorer/) — no setup required.
+
+> Using this at work? [A small sponsorship](#support-this-project) keeps it maintained and free.
 
 ---
 
@@ -179,7 +182,9 @@ Yes. MIT license — use it freely. No telemetry, no network requests, no accoun
 
 I build and maintain this tool solo. It's **free forever** — no premium tiers, no paywalls, no ads.
 
-**Goal: 200 EUR/month** to make this a funded side-project. Every tier below helps get there.
+Goal: make this a funded side-project so development continues at full steam.
+
+If this saved you an afternoon of manual lineage tracing, a one-time coffee or monthly sponsorship funds the next feature.
 
 **Why sponsor?**
 - Funds 100% of development (solo-maintained, no company backing)
@@ -199,9 +204,15 @@ I build and maintain this tool solo. It's **free forever** — no premium tiers,
 | **Community** | 7 EUR/mo | Name on README + sponsor badge |
 | **Coffee** | One-time | A personal thank-you + name listed below |
 
-### Hall of Sponsors
+See [SPONSORS.md](SPONSORS.md) for full tier details, corporate invoicing, and FAQ.
 
-> **Be the first!** Your name, logo, or company will appear right here — seen by every Power BI developer who visits. [Become a sponsor](https://github.com/sponsors/JonathanJihwanKim) and join the wall.
+### Community & Reach
+
+[![GitHub Stars](https://img.shields.io/github/stars/JonathanJihwanKim/pbip-lineage-explorer?style=flat&logo=github)](https://github.com/JonathanJihwanKim/pbip-lineage-explorer/stargazers)
+
+<a id="sponsors"></a>
+
+*Testimonials land here as users share their experience — [tag me on LinkedIn](https://www.linkedin.com/in/jihwankim1975/) if this tool helped you.*
 
 ---
 
@@ -235,7 +246,7 @@ Also available as a VS Code extension for developers who work directly in PBIP/T
 
 ---
 
-If PBIP Lineage Explorer helps your team, please [sponsor the project](https://github.com/sponsors/JonathanJihwanKim) to keep it free and actively maintained.
+If PBIP Lineage Explorer saved your team time, [sponsor the project](https://github.com/sponsors/JonathanJihwanKim) — every contribution keeps it free and actively maintained for the whole community.
 
 <a href="https://github.com/sponsors/JonathanJihwanKim"><img src="https://img.shields.io/badge/Sponsor-❤-ea4aaa?style=flat-square" alt="Sponsor" /></a> <a href="https://buymeacoffee.com/jihwankim"><img src="https://img.shields.io/badge/Buy%20Me%20a%20Coffee-☕-orange?style=flat-square" alt="Buy Me a Coffee" /></a>
 

@@ -111,3 +111,7 @@ Requires the [File System Access API](https://developer.mozilla.org/en-US/docs/W
 | Opera 72+ | Yes |
 | Firefox | No |
 | Safari | No |
+
+---
+
+This reference is maintained alongside the tool. If it saved you time, [sponsoring the project](../README.md#support-this-project) keeps the docs and tool up to date.
