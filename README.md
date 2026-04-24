@@ -8,9 +8,11 @@
 
 [![Try Live Demo](https://img.shields.io/badge/Try%20Live%20Demo-▶%20Open%20in%20Browser-28a745?style=for-the-badge&logo=powerbi)](https://jonathanjihwankim.github.io/pbip-lineage-explorer/)
 [![Sponsor](https://img.shields.io/badge/Sponsor-❤%20Support%20This%20Tool-ea4aaa?style=for-the-badge&logo=github-sponsors)](https://github.com/sponsors/JonathanJihwanKim)
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-☕%20One--time-orange?style=for-the-badge)](https://buymeacoffee.com/jihwankim)
 [![GitHub Stars](https://img.shields.io/github/stars/JonathanJihwanKim/pbip-lineage-explorer?style=for-the-badge&logo=github&color=f0a500)](https://github.com/JonathanJihwanKim/pbip-lineage-explorer/stargazers)
+[![Microsoft MVP](https://img.shields.io/badge/Microsoft%20MVP-Power%20BI-0078d4?style=for-the-badge&logo=microsoft)](https://mvp.microsoft.com/en-us/PublicProfile/5005229?wt.mc_id=DP-MVP-5004989)
 
-Built by a **Microsoft MVP** · Free forever · 100% client-side · Your files never leave your browser · [MIT License](LICENSE)
+Free forever · 100% client-side · Your files never leave your browser · [MIT License](LICENSE)
 
 ![PBIP Lineage Explorer Screenshot](docs/screenshot.png)
 *Click a visual → see the full chain from visual to BigQuery source column, including Power Query renames.*
@@ -232,7 +234,7 @@ Also available as a VS Code extension for developers who work directly in PBIP/T
 
 | Tool | Description |
 |------|-------------|
-| [PBIP Documenter](https://jonathanjihwankim.github.io/pbip-documenter/) | Generate full documentation from PBIP/TMDL semantic models |
+| [PBIP Documenter](https://jonathanjihwankim.github.io/pbip-documenter/) | Generate comprehensive, bidirectional documentation from PBIP/TMDL — HTML, Markdown, and JSON |
 | [PBIR Visual Manager](https://jonathanjihwankim.github.io/isHiddenInViewMode/) | Manage visual properties in Power BI PBIR reports |
 | [PBIP Impact Analyzer](https://jonathanjihwankim.github.io/pbip-impact-analyzer/) | Analyze dependencies and safely refactor semantic models |
 
