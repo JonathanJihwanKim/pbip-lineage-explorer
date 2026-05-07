@@ -264,6 +264,7 @@ export function extractFieldReferences(visualConfig, fullConfig) {
   // 5. Deep search for SourceRef patterns in vcObjects, objects, projections, dataTransforms
   deepSearchForRefs(visualConfig.vcObjects, addField);
   deepSearchForRefs(visualConfig.visualContainerObjects, addField);
+  deepSearchForRefs(visualConfig.objects, addField);  // catches Fx expressions in button Text, shape text, etc.
   deepSearchForRefs(visualConfig.dataTransforms, addField);
 
   return fields;

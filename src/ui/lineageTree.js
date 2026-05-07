@@ -11,7 +11,7 @@ const NODE_WIDTH = 200;
 const NODE_HEIGHT = 40;
 const VERTICAL_SPACING = 64;    // was 52; increased for breathing room between nodes
 const HORIZONTAL_SPACING = 260;
-const MAX_SVG_HEIGHT = 1600;    // was 600; let tall trees expand instead of compressing
+const MAX_SVG_HEIGHT = 2400;    // was 1600; give large trees (40+ nodes) more room before viewBox compression
 
 /**
  * Build a tree for a visual-first view: selected visual as root,
@@ -256,30 +256,182 @@ function addChainChildren(node, chain, sourceMap, graph, visited) {
 }
 
 /**
- * Render the lineage tree into a container element.
+ * Build a source-first tree for the "Source view" toggle.
+ * Root = source connection (L6), flowing down through PQ → Table → Columns → Measure → Visuals.
+ * @param {object} lineage - Output from traceMeasureLineage()
+ * @param {object} graph   - The full lineage graph
  */
-export function renderLineageTree(container, treeData) {
+export function buildSourceFirstTreeData(lineage, graph) {
+  const { measureChain, visuals } = lineage;
+
+  const visualLeaves = visuals.map(v => ({
+    name: truncateText(v.title || v.visualType || 'Visual', 28),
+    layer: 1, layerLabel: LAYER_LABELS[1], type: 'visual',
+    detail: `${v.visualType} on ${v.page}`, children: [],
+  }));
+
+  const measureNode = {
+    name: measureChain.name,
+    layer: 2, layerLabel: LAYER_LABELS[2], type: 'measure',
+    detail: truncateExpr(measureChain.expression),
+    children: visualLeaves,
+  };
+
+  // Group columns by PBI table
+  const tableGroups = new Map();
+  for (const col of measureChain.columns) {
+    if (!tableGroups.has(col.table)) tableGroups.set(col.table, []);
+    tableGroups.get(col.table).push(col);
+  }
+
+  if (tableGroups.size === 0) return null;
+
+  const sourceRoots = [];
+  let measurePlaced = false;
+
+  for (const [tableName, cols] of tableGroups) {
+    const tableNodeId = `table::${tableName}`;
+    const tableGraphNode = graph?.nodes?.get(tableNodeId);
+    const ds = tableGraphNode?.metadata?.dataSource;
+
+    const colNodes = cols.map(col => {
+      const wasRenamed = col.wasRenamed || (col.originalSourceColumn && col.originalSourceColumn !== col.name);
+      return {
+        name: col.name,
+        layer: 4,
+        layerLabel: wasRenamed && col.originalSourceColumn
+          ? `← src: ${truncateText(col.originalSourceColumn, 22)}`
+          : 'PBI Column',
+        type: 'column',
+        detail: '',
+        children: [],
+      };
+    });
+
+    // Place measure under the first table only to avoid duplication
+    const tableChildren = [...colNodes];
+    if (!measurePlaced) {
+      tableChildren.push(measureNode);
+      measurePlaced = true;
+    }
+
+    const tableNode = {
+      name: tableName,
+      layer: 4, layerLabel: LAYER_LABELS[4], type: 'table',
+      detail: [ds?.sourceType, ds?.database].filter(Boolean).join(' · '),
+      children: tableChildren,
+    };
+
+    // Walk graph: table → expression → source
+    let treeRoot = tableNode;
+    if (graph?.adjacency?.downstream) {
+      const tableDownIds = graph.adjacency.downstream.get(tableNodeId) || new Set();
+      outer: for (const dId of tableDownIds) {
+        const dNode = graph.nodes.get(dId);
+        if (dNode?.type === 'expression') {
+          for (const eId of (graph.adjacency.downstream.get(dNode.id) || new Set())) {
+            const srcNode = graph.nodes.get(eId);
+            if (srcNode?.type === 'source') {
+              const srcMeta = srcNode.metadata || {};
+              const srcDetail = [srcMeta.sourceType, srcMeta.server, srcMeta.database, srcMeta.schema].filter(Boolean).join(' · ');
+              const exprNode = {
+                name: truncateText(dNode.name || 'Expression', 30),
+                layer: 5, layerLabel: LAYER_LABELS[5], type: 'expression',
+                detail: 'Power Query expression', children: [tableNode],
+              };
+              treeRoot = {
+                name: truncateText(srcMeta.sourceTable || srcNode.name || 'Source', 30),
+                layer: 6, layerLabel: LAYER_LABELS[6], type: 'source',
+                detail: srcDetail, children: [exprNode],
+              };
+              break outer;
+            }
+          }
+        }
+      }
+      // Fallback: direct table → source edge
+      if (treeRoot === tableNode) {
+        for (const dId of (graph.adjacency.downstream.get(tableNodeId) || new Set())) {
+          const dNode = graph.nodes.get(dId);
+          if (dNode?.type === 'source') {
+            const srcMeta = dNode.metadata || {};
+            const srcDetail = [srcMeta.sourceType, srcMeta.server, srcMeta.database, srcMeta.schema].filter(Boolean).join(' · ');
+            treeRoot = {
+              name: truncateText(srcMeta.sourceTable || dNode.name || 'Source', 30),
+              layer: 6, layerLabel: LAYER_LABELS[6], type: 'source',
+              detail: srcDetail, children: [tableNode],
+            };
+            break;
+          }
+        }
+      }
+    }
+
+    sourceRoots.push(treeRoot);
+  }
+
+  if (sourceRoots.length === 0) return null;
+  if (sourceRoots.length === 1) return sourceRoots[0];
+
+  return {
+    name: measureChain.name,
+    layer: 0, layerLabel: 'Data Sources', type: 'hub',
+    detail: `${tableGroups.size} source tables`,
+    children: sourceRoots,
+  };
+}
+
+/**
+ * Render the lineage tree into a container element.
+ * @param {HTMLElement} container
+ * @param {object} treeData - pre-built tree from buildTreeData()
+ * @param {object} [options]
+ * @param {boolean} [options.sourceFirst] - use source-first vertical layout
+ * @param {object}  [options.lineage]     - raw lineage (required when sourceFirst=true)
+ * @param {object}  [options.graph]       - raw graph   (required when sourceFirst=true)
+ */
+export function renderLineageTree(container, treeData, options = {}) {
   destroyTree(container);
 
-  if (!treeData || (!treeData.children?.length && treeData.layer === 0)) {
+  // When source-first mode is requested, build the inverted tree
+  let effectiveTreeData = treeData;
+  const isVertical = options.sourceFirst && options.lineage;
+  if (isVertical) {
+    const sfData = buildSourceFirstTreeData(options.lineage, options.graph);
+    if (sfData) effectiveTreeData = sfData;
+    else isVertical = false;
+  }
+
+  if (!effectiveTreeData || (!effectiveTreeData.children?.length && effectiveTreeData.layer === 0)) {
     if (container) {
       container.innerHTML = '<p class="lineage-muted">No tree visualization available for this measure.</p>';
     }
     return;
   }
 
-  const hierarchy = d3.hierarchy(treeData);
+  const hierarchy = d3.hierarchy(effectiveTreeData);
 
-  // Calculate dimensions — height based on leaf count, width based on depth
+  // Calculate dimensions — axis meaning depends on layout direction
   const treeDepth = Math.max(hierarchy.height + 1, 2);
   const leaves = hierarchy.leaves().length;
-  const width = treeDepth * HORIZONTAL_SPACING + NODE_WIDTH + 80;
-  const height = Math.max(leaves * VERTICAL_SPACING, 200) + 60;
 
-  // Increased separation prevents node overlap on wide trees
-  const treeLayout = d3.tree()
-    .size([height - 60, width - NODE_WIDTH - 80])
-    .separation((a, b) => a.parent === b.parent ? 1.2 : 1.6);
+  let width, height;
+  if (isVertical) {
+    // Vertical (top-down): leaves spread horizontally, depth grows downward
+    width = Math.max(leaves * (NODE_WIDTH + 20), 400);
+    height = treeDepth * HORIZONTAL_SPACING + NODE_HEIGHT + 80;
+  } else {
+    width = treeDepth * HORIZONTAL_SPACING + NODE_WIDTH + 80;
+    height = Math.max(leaves * VERTICAL_SPACING, 200) + 60;
+  }
+
+  const treeLayout = isVertical
+    ? d3.tree()
+        .size([width - NODE_WIDTH - 40, height - NODE_HEIGHT - 80])
+        .separation((a, b) => a.parent === b.parent ? 1.3 : 2.0)
+    : d3.tree()
+        .size([height - 60, width - NODE_WIDTH - 80])
+        .separation((a, b) => a.parent === b.parent ? 1.2 : 1.6);
 
   treeLayout(hierarchy);
 
@@ -301,7 +453,7 @@ export function renderLineageTree(container, treeData) {
   const g = svg.append('g');
 
   const zoom = d3.zoom()
-    .scaleExtent([0.2, 3])
+    .scaleExtent([0.05, 3])  // floor raised dynamically by fitToView() after first paint
     .on('zoom', (event) => {
       g.attr('transform', event.transform);
     });
@@ -325,6 +477,8 @@ export function renderLineageTree(container, treeData) {
     const scaleX = availW / (width + 80);
     const scaleY = availH / (height + 60);
     const fitScale = Math.min(scaleX, scaleY, 1);
+    // Allow zooming ~30% beyond the auto-fit level so large trees can be seen in full
+    zoom.scaleExtent([Math.max(0.05, fitScale * 0.7), 3]);
     const tx = Math.max(20, (availW - width * fitScale) / 2);
     const ty = Math.max(10, (availH - height * fitScale) / 2);
     svg.transition().duration(250).call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(fitScale));
@@ -341,10 +495,10 @@ export function renderLineageTree(container, treeData) {
   // Auto-fit on first paint
   requestAnimationFrame(() => fitToView());
 
-  // Draw links
-  const linkGenerator = d3.linkHorizontal()
-    .x(d => d.y)
-    .y(d => d.x);
+  // Draw links — horizontal for measure view, vertical for source view
+  const linkGenerator = isVertical
+    ? d3.linkVertical().x(d => d.x).y(d => d.y)
+    : d3.linkHorizontal().x(d => d.y).y(d => d.x);
 
   g.selectAll('.tree-link')
     .data(hierarchy.links())
@@ -356,12 +510,12 @@ export function renderLineageTree(container, treeData) {
     .attr('stroke-width', 2.5)
     .attr('stroke-opacity', 0.65);
 
-  // Draw nodes
+  // Draw nodes — position differs by layout direction
   const nodes = g.selectAll('.tree-node')
     .data(hierarchy.descendants())
     .join('g')
     .attr('class', 'tree-node')
-    .attr('transform', d => `translate(${d.y}, ${d.x})`);
+    .attr('transform', d => isVertical ? `translate(${d.x}, ${d.y})` : `translate(${d.y}, ${d.x})`);
 
   // Node background rectangles
   nodes.append('rect')
@@ -443,7 +597,7 @@ export function renderLineageTree(container, treeData) {
         d.children = d._children;
         d._children = null;
       }
-      renderLineageTree(container, treeData);
+      renderLineageTree(container, treeData, options);
     });
 
   addLegend(svg, width);

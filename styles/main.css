@@ -416,7 +416,7 @@ button .icon { margin-right: 4px; }
   min-height: 120px;
   overflow-x: auto;   /* allow horizontal scroll on very wide trees */
   overflow-y: auto;   /* allow vertical scroll so tall trees aren't clipped */
-  max-height: 1600px; /* matches MAX_SVG_HEIGHT in lineageTree.js */
+  max-height: 2400px; /* matches MAX_SVG_HEIGHT in lineageTree.js */
 }
 
 .lineage-tree-container:empty {
@@ -484,6 +484,38 @@ button .icon { margin-right: 4px; }
   border-radius: 4px;
   pointer-events: none;
   user-select: none;
+}
+
+/* Tree view toggle (Measure view / Source view) */
+.tree-view-toggle-bar {
+  display: flex;
+  gap: 4px;
+  padding: 6px 8px;
+  background: rgba(22, 33, 62, 0.5);
+  border-bottom: 1px solid var(--border-color, #2a2a4a);
+}
+
+.btn-tree-view {
+  background: transparent;
+  border: 1px solid var(--border-color, #3a3a5a);
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 500;
+  padding: 3px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: var(--font-sans, system-ui, sans-serif);
+  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+.btn-tree-view:hover {
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--text-primary, #d4d4e0);
+}
+.btn-tree-view.active {
+  background: rgba(67, 120, 200, 0.2);
+  border-color: #4378c8;
+  color: #a8c4f0;
+  font-weight: 600;
 }
 
 /* --- Lineage Sections --- */

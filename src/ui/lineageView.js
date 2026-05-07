@@ -5,6 +5,8 @@
 
 import { NODE_COLORS } from '@pbip-lineage/core/utils/constants.js';
 import { buildTreeData, buildVisualTreeData, renderLineageTree, destroyTree, exportTreeAsSvg, exportTreeAsPng } from './lineageTree.js';
+
+const TREE_VIEW_KEY = 'pbip-tree-source-first';
 import { openImpactPanel } from './impactPanel.js';
 
 let _onMeasureNavigate = null;
@@ -63,7 +65,9 @@ export function renderLineage(lineage, measureName, graph) {
 
   if (treeContainer) {
     const treeData = buildTreeData(lineage, graph);
-    renderLineageTree(treeContainer, treeData);
+    const sourceFirst = localStorage.getItem(TREE_VIEW_KEY) === 'true';
+    renderLineageTree(treeContainer, treeData, { sourceFirst, lineage, graph });
+    addTreeViewToggle(treeContainer, lineage, measureName, graph, treeData);
     addExportToolbar(treeContainer, measureName);
   }
 
@@ -1251,6 +1255,45 @@ function bindClickHandlers(container) {
       }
     });
   });
+}
+
+/**
+ * Add a Measure view / Source view toggle above the D3 tree.
+ */
+function addTreeViewToggle(container, lineage, measureName, graph, treeData) {
+  const existing = container.querySelector('.tree-view-toggle-bar');
+  if (existing) existing.remove();
+
+  const isSF = localStorage.getItem(TREE_VIEW_KEY) === 'true';
+  const bar = document.createElement('div');
+  bar.className = 'tree-view-toggle-bar';
+
+  const btnMeasure = document.createElement('button');
+  btnMeasure.className = 'btn-tree-view' + (isSF ? '' : ' active');
+  btnMeasure.dataset.treeView = 'measure';
+  btnMeasure.title = 'Measure-centered: selected measure at root, sources to the right';
+  btnMeasure.textContent = 'Measure view';
+
+  const btnSource = document.createElement('button');
+  btnSource.className = 'btn-tree-view' + (isSF ? ' active' : '');
+  btnSource.dataset.treeView = 'source';
+  btnSource.title = 'Source-first: data flows top-down from source tables to visuals';
+  btnSource.textContent = 'Source view';
+
+  bar.appendChild(btnMeasure);
+  bar.appendChild(btnSource);
+
+  [btnMeasure, btnSource].forEach(btn => {
+    btn.addEventListener('click', () => {
+      const sf = btn.dataset.treeView === 'source';
+      localStorage.setItem(TREE_VIEW_KEY, sf ? 'true' : 'false');
+      renderLineageTree(container, treeData, { sourceFirst: sf, lineage, graph });
+      addTreeViewToggle(container, lineage, measureName, graph, treeData);
+      addExportToolbar(container, measureName);
+    });
+  });
+
+  container.insertBefore(bar, container.firstChild);
 }
 
 /**
