@@ -108,7 +108,9 @@ This tool directly bridges the gap between the two teams:
 ### For Everyone
 
 - **Visual-to-source lineage in one click** — full chain from report visual to original source column, through any number of DAX measures and sub-measures
-- **Interactive D3 tree** — Visual → Measure → Table → Column → Power Query → Source, with zoom/pan and click-to-expand nodes
+- **Interactive D3 tree** — Visual → Measure → Table → Column → Power Query → Source, with click-to-expand nodes
+- **Measure view / Source view tree toggle** — flip the D3 tree direction: horizontal (measure-centered) or vertical top-down (source → Power Query → table → columns → measure → visuals) for upstream tracing
+- **Discoverable zoom controls** — on-canvas +/−/Fit/1× buttons plus scroll-to-zoom and drag-to-pan, with extended zoom range for large trees (40+ nodes)
 - **Export** — SVG, PNG, CSV, Markdown — or copy lineage to clipboard
 
 ### For Data Engineers
@@ -124,6 +126,7 @@ This tool directly bridges the gap between the two teams:
 ### For Power BI Developers
 
 - **DAX dependency tree** — recursive tree of measure dependencies with syntax-highlighted DAX, Copy buttons, and USERELATIONSHIP display
+- **Button visual lineage** — measures referenced via Fx expressions in button Text properties are now traced (Issue #6 fix)
 - **Calculation group lineage** — see all calculation items (YTD, QTD, MTD) with their full DAX expressions
 - **Field parameter resolution** — see ALL measures a field parameter contains, not just the active one
 - **Impact analysis** — click ↗ Impact on any measure to see upstream and downstream dependencies grouped by type
